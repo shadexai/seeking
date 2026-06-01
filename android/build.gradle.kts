@@ -15,6 +15,15 @@ subprojects {
 
 subprojects {
     project.evaluationDependsOn(":app")
+
+    // ✅ Force all plugins (file_picker, etc.) to compile against SDK 36
+    afterEvaluate {
+        if (extensions.findByName("android") != null) {
+            extensions.configure<com.android.build.gradle.BaseExtension>("android") {
+                compileSdkVersion(36)
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {
