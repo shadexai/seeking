@@ -16,7 +16,7 @@ dependencies:
   hive: ^2.2.3
 
   # Browser
-  flutter_inappwebview: ^6.1.5
+  flutter_inappwebview: 5.8.0
 
   # Audio
   just_audio: ^0.9.40
