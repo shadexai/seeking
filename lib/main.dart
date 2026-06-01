@@ -699,7 +699,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         url = 'https://search.brave.com/search?q=${Uri.encodeComponent(url)}';
       }
     }
-    _wvc?.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+    _wvc?.loadUrl(urlRequest: URLRequest(url: Uri.parse(url)));
     FocusScope.of(context).unfocus();
   }
 
@@ -771,7 +771,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         // webview
         Expanded(
           child: InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri('https://search.brave.com')),
+            initialUrlRequest: URLRequest(url: Uri.parse('https://search.brave.com')),
             initialSettings: InAppWebViewSettings(
               incognito: true,
               clearCache: true,
