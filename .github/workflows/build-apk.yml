@@ -23,10 +23,12 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          # No fixed version - uses latest stable Flutter
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Upgrade file_picker
+        run: flutter pub upgrade file_picker
 
       - name: Build APK
         run: flutter build apk --release
