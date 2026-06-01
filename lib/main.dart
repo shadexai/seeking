@@ -4,7 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
@@ -684,11 +684,29 @@ class BrowserScreen extends StatefulWidget {
 }
 
 class _BrowserScreenState extends State<BrowserScreen> {
-  InAppWebViewController? _wvc;
+  late final WebViewController _wvc;
   final _urlCtrl = TextEditingController();
-  String _currentUrl = '';
   bool _loading = false;
   double _progress = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _wvc = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageStarted: (url) => setState(() {
+          _loading = true;
+          _urlCtrl.text = url;
+        }),
+        onPageFinished: (url) => setState(() {
+          _loading = false;
+          _urlCtrl.text = url;
+        }),
+        onProgress: (p) => setState(() => _progress = p / 100),
+      ))
+      ..loadRequest(Uri.parse('https://search.brave.com'));
+  }
 
   void _navigate(String input) {
     String url = input.trim();
@@ -699,7 +717,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         url = 'https://search.brave.com/search?q=${Uri.encodeComponent(url)}';
       }
     }
-    _wvc?.loadUrl(urlRequest: URLRequest(url: Uri.parse(url)));
+    _wvc.loadRequest(Uri.parse(url));
     FocusScope.of(context).unfocus();
   }
 
@@ -757,7 +775,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            _IconBtn(icon: Icons.refresh_rounded, onTap: () => _wvc?.reload()),
+            _IconBtn(icon: Icons.refresh_rounded, onTap: () => _wvc.reload()),
           ]),
         ),
         // progress bar
@@ -769,36 +787,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             minHeight: 2,
           ),
         // webview
-        Expanded(
-          child: InAppWebView(
-            initialUrlRequest: URLRequest(url: Uri.parse('https://search.brave.com')),
-            initialSettings: InAppWebViewSettings(
-              incognito: true,
-              clearCache: true,
-              clearSessionCache: true,
-              javaScriptEnabled: true,
-              mediaPlaybackRequiresUserGesture: false,
-              allowsInlineMediaPlayback: true,
-              useHybridComposition: true,
-            ),
-            onWebViewCreated: (c) => _wvc = c,
-            onLoadStart: (c, url) {
-              setState(() {
-                _loading = true;
-                _urlCtrl.text = url?.toString() ?? '';
-                _currentUrl = url?.toString() ?? '';
-              });
-            },
-            onLoadStop: (c, url) {
-              setState(() {
-                _loading = false;
-                _urlCtrl.text = url?.toString() ?? '';
-                _currentUrl = url?.toString() ?? '';
-              });
-            },
-            onProgressChanged: (c, p) => setState(() => _progress = p / 100),
-          ),
-        ),
+        Expanded(child: WebViewWidget(controller: _wvc)),
       ]),
     );
   }
