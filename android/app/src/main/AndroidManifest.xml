@@ -3,12 +3,15 @@
     <!-- Internet for browser + YouTube streaming -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Required for Android 13+ media notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- Audio background playback -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-    <!-- File picker -->
+    <!-- File picker (legacy) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
@@ -38,9 +41,9 @@
             </intent-filter>
         </activity>
 
-        <!-- Background audio service -->
+        <!-- Corrected audio service declaration -->
         <service
-            android:name="com.ryanheise.audioservice.AudioServiceBackgroundTask"
+            android:name="com.ryanheise.audioservice.AudioService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
