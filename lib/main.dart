@@ -25,17 +25,25 @@ Future<void> main() async {
   Hive.registerAdapter(IdeaAdapter());
   await Hive.openBox<Idea>('ideas');
 
-  final handler = await AudioService.init(
-    builder: () => MyAudioHandler(),
-    config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.seeking.audio',
-      androidNotificationChannelName: 'Seeking Music',
-      androidNotificationOngoing: true,
-    ),
-  );
-  audioHandler = handler as MyAudioHandler;
-
+  // ✅ Run app immediately, init audio in background
   runApp(const SeekingApp());
+
+  // ✅ Init audio after UI is shown — prevents splash freeze
+  try {
+    final handler = await AudioService.init(
+      builder: () => MyAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.seeking.audio',
+        androidNotificationChannelName: 'Seeking Music',
+        androidNotificationOngoing: true,
+      ),
+    ).timeout(const Duration(seconds: 10));
+    audioHandler = handler as MyAudioHandler;
+  } catch (e) {
+    debugPrint('AudioService init failed: $e');
+    // ✅ Fallback: init handler directly so app doesn't crash
+    audioHandler = MyAudioHandler();
+  }
 }
 
 class SeekingApp extends StatelessWidget {
