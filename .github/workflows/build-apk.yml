@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,11 +18,12 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Flutter (STABLE LOCKED)
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          version: 3.22.3
+          # ✅ Upgraded from 3.22.3 — old version had targetSdkVersion=34 hardcoded
+          version: 3.32.0
 
       - name: Clean project
         run: flutter clean
@@ -33,6 +33,28 @@ jobs:
 
       - name: Generate Hive adapters
         run: dart run build_runner build --delete-conflicting-outputs
+
+      # ✅ Inject Gradle init script to force compileSdk=36 on ALL plugins before evaluation
+      - name: Inject Gradle init script for compileSdk override
+        run: |
+          mkdir -p $HOME/.gradle/init.d
+          cat > $HOME/.gradle/init.d/compileSdk.gradle << 'GRADLE'
+          allprojects {
+            beforeEvaluate { project ->
+              project.ext.set("android.compileSdkVersion", 36)
+            }
+            afterEvaluate { project ->
+              if (project.hasProperty("android")) {
+                def android = project.extensions.findByName("android")
+                if (android != null) {
+                  try {
+                    android.compileSdkVersion 36
+                  } catch (Exception ignored) {}
+                }
+              }
+            }
+          }
+          GRADLE
 
       - name: Build APK (release)
         run: flutter build apk --release
