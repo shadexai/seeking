@@ -60,7 +60,8 @@ class MyAudioHandler extends BaseAudioHandler {
   Future<void> setPlaylist(List<MediaItem> items) async {
     if (items.isEmpty) return;
     _playlist = ConcatenatingAudioSource(
-      children: items.map((i) => AudioSource.file(File(i.id))).toList(),
+      // ✅ Fixed: i.id is already a String path, no need to wrap in File()
+      children: items.map((i) => AudioSource.file(i.id)).toList(),
     );
     await _player.setAudioSource(_playlist!);
     queue.add(items);
@@ -69,7 +70,8 @@ class MyAudioHandler extends BaseAudioHandler {
   }
 
   Future<void> playFile(MediaItem item) async {
-    await _player.setAudioSource(AudioSource.file(File(item.id)));
+    // ✅ Fixed: item.id is already a String path, no need to wrap in File()
+    await _player.setAudioSource(AudioSource.file(item.id));
     queue.add([item]);
     mediaItem.add(item);
     await _player.play();
