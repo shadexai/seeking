@@ -24,13 +24,14 @@ class MyAudioHandler extends BaseAudioHandler {
   void _listenToPositionChanges() {
     _player.positionStream.listen((position) {
       if (_currentIndex >= 0 && _queue.isNotEmpty) {
-        playbackState.add(playbackState.value.copyWith(
+        final currentState = playbackState.value;
+        playbackState.add(currentState.copyWith(
           position: position,
           updatePosition: position,
         ));
       }
     });
-    _player.playerStateStream.listen((state) {
+    _player.playerStateStream.listen((_) {
       _broadcastState();
     });
   }
@@ -50,7 +51,7 @@ class MyAudioHandler extends BaseAudioHandler {
         MediaControl.skipToNext,
       ],
       systemActions: const {
-        MediaAction.seekTo,
+        MediaAction.seek,
         MediaAction.skipToNext,
         MediaAction.skipToPrevious,
       },
@@ -62,12 +63,9 @@ class MyAudioHandler extends BaseAudioHandler {
               : AudioProcessingState.idle,
       playing: playing,
       updatePosition: position,
-      position: position,
       bufferedPosition: Duration.zero,
       speed: _player.speed,
       queueIndex: _currentIndex,
-      repeatMode: AudioServiceRepeatMode.none,
-      shuffleMode: AudioServiceShuffleMode.none,
     ));
   }
 
@@ -124,7 +122,6 @@ class MyAudioHandler extends BaseAudioHandler {
     if (index != -1) {
       await _playAtIndex(index);
     } else {
-      // If item not in queue, add it and play
       _queue.add(item);
       await _playAtIndex(_queue.length - 1);
     }
@@ -158,6 +155,6 @@ class MyAudioHandler extends BaseAudioHandler {
   @override
   Future<void> onDestroy() async {
     await _player.dispose();
-    super.onDestroy();
+    // Do NOT call super.onDestroy() – it doesn't exist in BaseAudioHandler.
   }
 }
