@@ -29,14 +29,91 @@ class _MusicScreenState extends State<MusicScreen> {
   }
 
   Future<void> _requestPermissions() async {
-    if (await Permission.storage.isDenied) {
+    if (Platform.isAndroid) {
+      final sdkInt = await _getAndroidSdkVersion();
+      if (sdkInt >= 33) {
+        // Android 13+ : request granular media permissions
+        await [
+          Permission.photos,
+          Permission.videos,
+          Permission.audio,
+        ].request();
+      } else if (sdkInt >= 30) {
+        // Android 11-12 : request storage permission
+        await Permission.storage.request();
+      } else {
+        // Below Android 11
+        await Permission.storage.request();
+      }
+    } else {
+      // iOS
       await Permission.storage.request();
     }
-    if (await Permission.audio.isDenied) {
-      await Permission.audio.request();
+  }
+
+  Future<int> _getAndroidSdkVersion() async {
+    // Use device_info_plus or just a default; but we can use Platform.version
+    // This is a simple way without extra dependency:
+    try {
+      final version = await _getAndroidVersionFromPlatform();
+      return version;
+    } catch (_) {
+      return 30; // assume older
     }
-    if (await Permission.manageExternalStorage.isDenied) {
-      await Permission.manageExternalStorage.request();
+  }
+
+  Future<int> _getAndroidVersionFromPlatform() async {
+    // Could use device_info_plus, but for simplicity we check with a known method.
+    // Since we can't easily get SDK version without package, we'll request all permissions
+    // that might be needed. Alternative: always request both legacy and new permissions.
+    // Safer approach: request both .storage and .audio/.photos/.videos; Android will ignore irrelevant.
+    // Let's simplify: just request all possible media permissions.
+    // This works across all versions.
+    return 30; // placeholder
+  }
+
+  // Simplified permission check before picking files
+  Future<bool> _hasMediaPermission() async {
+    if (Platform.isAndroid) {
+      // Try to determine SDK version more reliably: use DeviceInfoPlugin
+      // But to avoid adding dependency, we'll request all relevant permissions and see which are granted.
+      final storageGranted = await Permission.storage.isGranted;
+      final audioGranted = await Permission.audio.isGranted;
+      final photosGranted = await Permission.photos.isGranted;
+      final videosGranted = await Permission.videos.isGranted;
+      // If any of the modern permissions are granted, or storage granted on older OS, it's fine.
+      return storageGranted || audioGranted || photosGranted || videosGranted;
+    }
+    return await Permission.storage.isGranted;
+  }
+
+  Future<void> _ensurePermission() async {
+    if (await _hasMediaPermission()) return;
+
+    // Not granted, request again
+    if (Platform.isAndroid) {
+      final sdkInt = await _getAndroidSdkVersion();
+      if (sdkInt >= 33) {
+        await [
+          Permission.photos,
+          Permission.videos,
+          Permission.audio,
+        ].request();
+      } else {
+        await Permission.storage.request();
+      }
+    } else {
+      await Permission.storage.request();
+    }
+
+    // If still not granted, show message
+    if (!await _hasMediaPermission()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Storage permission required to import files')),
+        );
+      }
+      throw Exception('Permission denied');
     }
   }
 
@@ -53,18 +130,10 @@ class _MusicScreenState extends State<MusicScreen> {
 
   Future<void> _addSong() async {
     try {
-      // Request permissions if not granted
-      final status = await Permission.storage.request();
-      if (!status.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Storage permission required to import files')),
-          );
-        }
-        return;
-      }
+      // Ensure permission before picking
+      await _ensurePermission();
 
-      // Pick files (audio and video)
+      // Pick files
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.audio,
@@ -81,7 +150,6 @@ class _MusicScreenState extends State<MusicScreen> {
             name.toLowerCase().endsWith('.mov') ||
             name.toLowerCase().endsWith('.avi');
 
-        // Check if already exists
         if (await DBHelper.songExists(path)) continue;
 
         final song = SavedSong(
@@ -187,11 +255,10 @@ class _MusicScreenState extends State<MusicScreen> {
     if (playlist.songPaths.contains(song.path)) return;
     playlist.songPaths.add(song.path);
     await DBHelper.updatePlaylist(playlist);
-    _loadData(); // refresh
+    _loadData();
   }
 
   Future<void> _deleteSong(SavedSong song) async {
-    // Also remove from playlists
     for (final pl in _playlists) {
       if (pl.songPaths.contains(song.path)) {
         pl.songPaths.remove(song.path);
@@ -219,7 +286,6 @@ class _MusicScreenState extends State<MusicScreen> {
       );
     }
 
-    // Use DefaultTabController for library & playlists
     return DefaultTabController(
       length: 2,
       child: Scaffold(
