@@ -188,7 +188,6 @@ class _MusicScreenState extends State<MusicScreen> with SingleTickerProviderStat
   }
 
   Future<void> _deleteSong(SavedSong song) async {
-    // remove from playlists too
     for (final pl in _playlists) {
       if (pl.songPaths.contains(song.path)) {
         pl.songPaths.remove(song.path);
@@ -308,13 +307,16 @@ class _MusicScreenState extends State<MusicScreen> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.bg,
       appBar: AppBar(
+        backgroundColor: C.bg,
         title: const Text('Music'),
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: C.accentLight,
           labelColor: C.accentLight,
           unselectedLabelColor: C.hint,
+          dividerColor: Colors.transparent,
           tabs: const [
             Tab(icon: Icon(Icons.library_music_outlined), text: 'Library'),
             Tab(icon: Icon(Icons.queue_music_outlined), text: 'Playlists'),
@@ -343,295 +345,280 @@ class _MusicScreenState extends State<MusicScreen> with SingleTickerProviderStat
             child: TabBarView(
               controller: _tabController,
               children: [
+
                 // ── Library ──
-                Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              onChanged: (v) => setState(() => _search = v),
-                              decoration: InputDecoration(
-                                hintText: 'Search library...',
-                                prefixIcon: const Icon(Icons.search, color: C.hint),
-                                filled: true,
-                                fillColor: C.card,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          ElevatedButton.icon(
-                            onPressed: _picking ? null : _pickFiles,
-                            icon: Icon(_picking ? Icons.hourglass_empty : Icons.add, size: 18),
-                            label: const Text('Add'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: C.accent,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 12),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_songs.isNotEmpty)
+                Material(
+                  color: C.bg, // ✅ fixes grey background
+                  child: Column(
+                    children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                         child: Row(
                           children: [
-                            Text('${_filtered.length} track${_filtered.length == 1 ? '' : 's'}',
-                                style: const TextStyle(color: C.hint, fontSize: 12)),
-                            const Spacer(),
-                            if (_filtered.isNotEmpty)
-                              TextButton.icon(
-                                onPressed: () => audioHandler.setPlaylist(_toMediaItems(_filtered)),
-                                icon: const Icon(Icons.shuffle, size: 16, color: C.accentLight),
-                                label: const Text('Shuffle All',
-                                    style: TextStyle(fontSize: 12, color: C.accentLight)),
-                                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                            Expanded(
+                              child: TextField(
+                                onChanged: (v) => setState(() => _search = v),
+                                decoration: InputDecoration(
+                                  hintText: 'Search library...',
+                                  prefixIcon: const Icon(Icons.search, color: C.hint),
+                                  filled: true,
+                                  fillColor: C.card,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                                ),
                               ),
+                            ),
+                            const SizedBox(width: 10),
+                            ElevatedButton.icon(
+                              onPressed: _picking ? null : _pickFiles,
+                              icon: Icon(_picking ? Icons.hourglass_empty : Icons.add, size: 18),
+                              label: const Text('Add'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: C.accent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 12),
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    Expanded(
-                      child: _loadingSongs
-                          ? const Center(child: CircularProgressIndicator())
-                          : _filtered.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.library_music_outlined,
-                                          size: 64, color: C.hint),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        _search.isNotEmpty
-                                            ? 'No results for "$_search"'
-                                            : 'Library is empty',
-                                        style: const TextStyle(color: C.hint),
-                                      ),
-                                      if (_search.isEmpty)
-                                        const Text('Tap Add to import audio or video',
-                                            style: TextStyle(color: C.hint, fontSize: 12)),
-                                    ],
-                                  ),
-                                )
-                              : ListView.builder(
-                                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                                  itemCount: _filtered.length,
-                                  itemBuilder: (_, i) {
-                                    final song = _filtered[i];
-                                    return StreamBuilder<MediaItem?>(
-                                      stream: audioHandler.mediaItem,
-                                      builder: (_, snap) {
-                                        final playing = snap.data?.id == song.path;
-                                        return Container(
-                                          margin: const EdgeInsets.only(bottom: 6),
-                                          decoration: BoxDecoration(
-                                            color: playing
-                                                ? C.accent.withOpacity(0.15)
-                                                : C.card,
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: playing
-                                                ? Border.all(
-                                                    color: C.accent.withOpacity(0.4))
-                                                : null,
-                                          ),
-                                          child: ListTile(
-                                            leading: CircleAvatar(
-                                              backgroundColor:
-                                                  playing ? C.accent : C.surface,
-                                              child: Icon(
-                                                playing
-                                                    ? Icons.graphic_eq
-                                                    : song.isVideo
-                                                        ? Icons.videocam_outlined
-                                                        : Icons.music_note,
-                                                color: playing
-                                                    ? Colors.white
-                                                    : C.accentLight,
-                                                size: 20,
+                      if (_songs.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            children: [
+                              Text('${_filtered.length} track${_filtered.length == 1 ? '' : 's'}',
+                                  style: const TextStyle(color: C.hint, fontSize: 12)),
+                              const Spacer(),
+                              if (_filtered.isNotEmpty)
+                                TextButton.icon(
+                                  onPressed: () => audioHandler.setPlaylist(_toMediaItems(_filtered)),
+                                  icon: const Icon(Icons.shuffle, size: 16, color: C.accentLight),
+                                  label: const Text('Shuffle All',
+                                      style: TextStyle(fontSize: 12, color: C.accentLight)),
+                                  style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                                ),
+                            ],
+                          ),
+                        ),
+                      Expanded(
+                        child: _loadingSongs
+                            ? const Center(child: CircularProgressIndicator())
+                            : _filtered.isEmpty
+                                ? Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.library_music_outlined,
+                                            size: 64, color: C.hint),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          _search.isNotEmpty
+                                              ? 'No results for "$_search"'
+                                              : 'Library is empty',
+                                          style: const TextStyle(color: C.hint),
+                                        ),
+                                        if (_search.isEmpty)
+                                          const Text('Tap Add to import audio or video',
+                                              style: TextStyle(color: C.hint, fontSize: 12)),
+                                      ],
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                                    itemCount: _filtered.length,
+                                    itemBuilder: (_, i) {
+                                      final song = _filtered[i];
+                                      return StreamBuilder<MediaItem?>(
+                                        stream: audioHandler.mediaItem,
+                                        builder: (_, snap) {
+                                          final playing = snap.data?.id == song.path;
+                                          return Container(
+                                            margin: const EdgeInsets.only(bottom: 6),
+                                            decoration: BoxDecoration(
+                                              color: playing
+                                                  ? C.accent.withOpacity(0.15)
+                                                  : C.card,
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: playing
+                                                  ? Border.all(color: C.accent.withOpacity(0.4))
+                                                  : null,
+                                            ),
+                                            child: ListTile(
+                                              leading: CircleAvatar(
+                                                backgroundColor: playing ? C.accent : C.surface,
+                                                child: Icon(
+                                                  playing
+                                                      ? Icons.graphic_eq
+                                                      : song.isVideo
+                                                          ? Icons.videocam_outlined
+                                                          : Icons.music_note,
+                                                  color: playing ? Colors.white : C.accentLight,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                              title: Text(song.name,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontWeight: playing ? FontWeight.bold : FontWeight.normal,
+                                                    color: playing ? C.accentLight : C.textPrimary,
+                                                    fontSize: 14,
+                                                  )),
+                                              subtitle: Text(
+                                                  song.isVideo ? 'Video' : 'Audio',
+                                                  style: const TextStyle(color: C.hint, fontSize: 11)),
+                                              onTap: () => audioHandler.playFile(
+                                                MediaItem(id: song.path, title: song.name),
+                                                _toMediaItems(_songs),
+                                              ),
+                                              trailing: PopupMenuButton<String>(
+                                                color: C.card,
+                                                icon: const Icon(Icons.more_vert, color: C.hint, size: 20),
+                                                onSelected: (v) {
+                                                  if (v == 'playlist') _showAddToPlaylist(song);
+                                                  if (v == 'delete') _deleteSong(song);
+                                                },
+                                                itemBuilder: (_) => const [
+                                                  PopupMenuItem(
+                                                    value: 'playlist',
+                                                    child: Row(children: [
+                                                      Icon(Icons.playlist_add, size: 18, color: C.accentLight),
+                                                      SizedBox(width: 8),
+                                                      Text('Add to Playlist'),
+                                                    ]),
+                                                  ),
+                                                  PopupMenuItem(
+                                                    value: 'delete',
+                                                    child: Row(children: [
+                                                      Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                                                      SizedBox(width: 8),
+                                                      Text('Remove', style: TextStyle(color: Colors.redAccent)),
+                                                    ]),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                            title: Text(song.name,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontWeight: playing
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal,
-                                                  color: playing
-                                                      ? C.accentLight
-                                                      : C.textPrimary,
-                                                  fontSize: 14,
-                                                )),
-                                            subtitle: Text(
-                                                song.isVideo ? 'Video' : 'Audio',
-                                                style: const TextStyle(
-                                                    color: C.hint, fontSize: 11)),
-                                            onTap: () => audioHandler.playFile(
-                                              MediaItem(id: song.path, title: song.name),
-                                              _toMediaItems(_songs),
-                                            ),
-                                            trailing: PopupMenuButton<String>(
-                                              color: C.card,
-                                              icon: const Icon(Icons.more_vert,
-                                                  color: C.hint, size: 20),
-                                              onSelected: (v) {
-                                                if (v == 'playlist') _showAddToPlaylist(song);
-                                                if (v == 'delete') _deleteSong(song);
-                                              },
-                                              itemBuilder: (_) => const [
-                                                PopupMenuItem(
-                                                  value: 'playlist',
-                                                  child: Row(children: [
-                                                    Icon(Icons.playlist_add,
-                                                        size: 18, color: C.accentLight),
-                                                    SizedBox(width: 8),
-                                                    Text('Add to Playlist'),
-                                                  ]),
-                                                ),
-                                                PopupMenuItem(
-                                                  value: 'delete',
-                                                  child: Row(children: [
-                                                    Icon(Icons.delete_outline,
-                                                        size: 18,
-                                                        color: Colors.redAccent),
-                                                    SizedBox(width: 8),
-                                                    Text('Remove',
-                                                        style: TextStyle(
-                                                            color: Colors.redAccent)),
-                                                  ]),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    );
-                                  },
-                                ),
-                    ),
-                  ],
+                                          );
+                                        },
+                                      );
+                                    },
+                                  ),
+                      ),
+                    ],
+                  ),
                 ),
 
                 // ── Playlists ──
-                Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                      child: Row(
-                        children: [
-                          Text('${_playlists.length} playlist${_playlists.length == 1 ? '' : 's'}',
-                              style: const TextStyle(color: C.hint, fontSize: 12)),
-                          const Spacer(),
-                          ElevatedButton.icon(
-                            onPressed: () => _createPlaylist(context),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('New'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: C.accent,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 10),
+                Material(
+                  color: C.bg, // ✅ fixes grey background
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                        child: Row(
+                          children: [
+                            Text('${_playlists.length} playlist${_playlists.length == 1 ? '' : 's'}',
+                                style: const TextStyle(color: C.hint, fontSize: 12)),
+                            const Spacer(),
+                            ElevatedButton.icon(
+                              onPressed: () => _createPlaylist(context),
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('New'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: C.accent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 10),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _loadingPlaylists
-                          ? const Center(child: CircularProgressIndicator())
-                          : _playlists.isEmpty
-                              ? const Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.queue_music_outlined,
-                                          size: 64, color: C.hint),
-                                      SizedBox(height: 12),
-                                      Text('No playlists yet',
-                                          style: TextStyle(color: C.hint)),
-                                      SizedBox(height: 4),
-                                      Text('Tap New to create one',
-                                          style: TextStyle(
-                                              color: C.hint, fontSize: 12)),
-                                    ],
-                                  ),
-                                )
-                              : ListView.builder(
-                                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                                  itemCount: _playlists.length,
-                                  itemBuilder: (_, i) {
-                                    final pl = _playlists[i];
-                                    final plSongs = _songs
-                                        .where((s) => pl.songPaths.contains(s.path))
-                                        .toList();
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 8),
-                                      decoration: BoxDecoration(
-                                        color: C.card,
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: ListTile(
-                                        leading: Container(
-                                          width: 48, height: 48,
-                                          decoration: BoxDecoration(
-                                            color: C.accent.withOpacity(0.2),
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: const Icon(Icons.queue_music,
-                                              color: C.accentLight),
+                      Expanded(
+                        child: _loadingPlaylists
+                            ? const Center(child: CircularProgressIndicator())
+                            : _playlists.isEmpty
+                                ? const Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.queue_music_outlined, size: 64, color: C.hint),
+                                        SizedBox(height: 12),
+                                        Text('No playlists yet', style: TextStyle(color: C.hint)),
+                                        SizedBox(height: 4),
+                                        Text('Tap New to create one',
+                                            style: TextStyle(color: C.hint, fontSize: 12)),
+                                      ],
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                                    itemCount: _playlists.length,
+                                    itemBuilder: (_, i) {
+                                      final pl = _playlists[i];
+                                      final plSongs = _songs
+                                          .where((s) => pl.songPaths.contains(s.path))
+                                          .toList();
+                                      return Container(
+                                        margin: const EdgeInsets.only(bottom: 8),
+                                        decoration: BoxDecoration(
+                                          color: C.card,
+                                          borderRadius: BorderRadius.circular(14),
                                         ),
-                                        title: Text(pl.name,
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: C.textPrimary)),
-                                        subtitle: Text(
-                                            '${plSongs.length} track${plSongs.length == 1 ? '' : 's'}',
-                                            style: const TextStyle(
-                                                color: C.hint, fontSize: 12)),
-                                        onTap: plSongs.isEmpty
-                                            ? null
-                                            : () => audioHandler.setPlaylist(
-                                                _toMediaItems(plSongs)),
-                                        trailing: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            if (plSongs.isNotEmpty)
-                                              IconButton(
-                                                icon: const Icon(
-                                                    Icons.play_circle_outline,
-                                                    color: C.accentLight),
-                                                onPressed: () => audioHandler
-                                                    .setPlaylist(_toMediaItems(plSongs)),
-                                              ),
-                                            IconButton(
-                                              icon: const Icon(Icons.delete_outline,
-                                                  color: C.hint, size: 20),
-                                              onPressed: () =>
-                                                  _deletePlaylist(context, pl),
+                                        child: ListTile(
+                                          leading: Container(
+                                            width: 48, height: 48,
+                                            decoration: BoxDecoration(
+                                              color: C.accent.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(12),
                                             ),
-                                          ],
+                                            child: const Icon(Icons.queue_music, color: C.accentLight),
+                                          ),
+                                          title: Text(pl.name,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: C.textPrimary)),
+                                          subtitle: Text(
+                                              '${plSongs.length} track${plSongs.length == 1 ? '' : 's'}',
+                                              style: const TextStyle(color: C.hint, fontSize: 12)),
+                                          onTap: plSongs.isEmpty
+                                              ? null
+                                              : () => audioHandler.setPlaylist(_toMediaItems(plSongs)),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (plSongs.isNotEmpty)
+                                                IconButton(
+                                                  icon: const Icon(Icons.play_circle_outline,
+                                                      color: C.accentLight),
+                                                  onPressed: () => audioHandler
+                                                      .setPlaylist(_toMediaItems(plSongs)),
+                                                ),
+                                              IconButton(
+                                                icon: const Icon(Icons.delete_outline,
+                                                    color: C.hint, size: 20),
+                                                onPressed: () => _deletePlaylist(context, pl),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                    ),
-                  ],
+                                      );
+                                    },
+                                  ),
+                      ),
+                    ],
+                  ),
                 ),
+
               ],
             ),
           ),
