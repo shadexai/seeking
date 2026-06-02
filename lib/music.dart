@@ -63,7 +63,7 @@ class MyAudioHandler extends BaseAudioHandler {
     ));
   }
 
-  Future<void> setPlaylist(List<MediaItem> items, {int initialIndex = 0}) async {
+  Future<void> setPlaylist(List<<MediaItem> items, {int initialIndex = 0}) async {
     if (items.isEmpty) return;
     _playlist = ConcatenatingAudioSource(
       children: items.map((i) => AudioSource.file(i.id)).toList(),
@@ -74,7 +74,7 @@ class MyAudioHandler extends BaseAudioHandler {
     await _player.play();
   }
 
-  Future<void> playFile(MediaItem item, List<MediaItem> allItems) async {
+  Future<void> playFile(MediaItem item, List<<MediaItem> allItems) async {
     final index = allItems.indexWhere((i) => i.id == item.id);
     await setPlaylist(allItems, initialIndex: index < 0 ? 0 : index);
   }
@@ -101,13 +101,13 @@ class MyAudioHandler extends BaseAudioHandler {
 class MusicScreen extends StatefulWidget {
   const MusicScreen({super.key});
   @override
-  State<MusicScreen> createState() => _MusicScreenState();
+  State<<MusicScreen> createState() => _MusicScreenState();
 }
 
-class _MusicScreenState extends State<MusicScreen> {
+class _MusicScreenState extends State<<MusicScreen> {
   int _selectedTab = 0;
   List<SavedSong> _songs = [];
-  List<Playlist> _playlists = [];
+  List<<Playlist> _playlists = [];
   bool _loadingSongs = true;
   bool _loadingPlaylists = true;
   bool _picking = false;
@@ -144,7 +144,7 @@ class _MusicScreenState extends State<MusicScreen> {
       ? _songs
       : _songs.where((s) => s.name.toLowerCase().contains(_search.toLowerCase())).toList();
 
-  List<MediaItem> _toMediaItems(List<SavedSong> songs) => songs
+  List<<MediaItem> _toMediaItems(List<SavedSong> songs) => songs
       .map((s) => MediaItem(id: s.path, title: s.name, artist: s.isVideo ? 'Video' : 'Audio'))
       .toList();
 
@@ -288,27 +288,49 @@ class _MusicScreenState extends State<MusicScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: C.bg,
-      appBar: AppBar(
-        backgroundColor: C.bg,
-        title: const Text('Music'),
-        actions: [
-          if (_sleepMinutesLeft != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Chip(
-                label: Text('$_sleepMinutesLeft min', style: const TextStyle(fontSize: 11)),
-                avatar: const Icon(Icons.bedtime, size: 14),
-                backgroundColor: C.accent.withOpacity(0.2),
-              ),
-            ),
-          IconButton(icon: const Icon(Icons.bedtime_outlined), onPressed: _showSleepTimer),
-        ],
-      ),
-      body: Column(
+    return Container(
+      color: C.bg,
+      child: Column(
         children: [
-          Padding(
+          // Custom header (since we removed the inner Scaffold)
+          Container(
+            color: C.bg,
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 16,
+              right: 16,
+              bottom: 8,
+            ),
+            child: Row(
+              children: [
+                const Text(
+                  'Music',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: C.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                if (_sleepMinutesLeft != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Chip(
+                      label: Text('$_sleepMinutesLeft min', style: const TextStyle(fontSize: 11)),
+                      avatar: const Icon(Icons.bedtime, size: 14),
+                      backgroundColor: C.accent.withOpacity(0.2),
+                    ),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.bedtime_outlined, color: C.textPrimary),
+                  onPressed: _showSleepTimer,
+                ),
+              ],
+            ),
+          ),
+          // Segmented toggle
+          Container(
+            color: C.bg,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: SegmentedButton<int>(
               segments: const [
@@ -334,10 +356,17 @@ class _MusicScreenState extends State<MusicScreen> {
               ),
             ),
           ),
+          // Content area
           Expanded(
-            child: IndexedStack(
-              index: _selectedTab,
-              children: [_buildLibrary(), _buildPlaylists()],
+            child: Container(
+              color: C.bg,
+              child: IndexedStack(
+                index: _selectedTab,
+                children: [
+                  _buildLibrary(),
+                  _buildPlaylists(),
+                ],
+              ),
             ),
           ),
           const _NowPlayingCard(),
@@ -347,7 +376,7 @@ class _MusicScreenState extends State<MusicScreen> {
   }
 
   Widget _buildLibrary() {
-    return ColoredBox(
+    return Container(
       color: C.bg,
       child: Column(
         children: [
@@ -429,7 +458,7 @@ class _MusicScreenState extends State<MusicScreen> {
                         itemCount: _filtered.length,
                         itemBuilder: (_, i) {
                           final song = _filtered[i];
-                          return StreamBuilder<MediaItem?>(
+                          return StreamBuilder<<MediaItem?>(
                             stream: audioHandler.mediaItem,
                             builder: (_, snap) {
                               final playing = snap.data?.id == song.path;
@@ -502,7 +531,7 @@ class _MusicScreenState extends State<MusicScreen> {
   }
 
   Widget _buildPlaylists() {
-    return ColoredBox(
+    return Container(
       color: C.bg,
       child: Column(
         children: [
@@ -657,12 +686,12 @@ class _NowPlayingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<MediaItem?>(
+    return StreamBuilder<<MediaItem?>(
       stream: audioHandler.mediaItem,
       builder: (_, mediaSnap) {
         final item = mediaSnap.data;
         if (item == null) return const SizedBox.shrink();
-        return StreamBuilder<PlaybackState>(
+        return StreamBuilder<<PlaybackState>(
           stream: audioHandler.playbackState,
           builder: (_, stateSnap) {
             final playing = stateSnap.data?.playing ?? false;
