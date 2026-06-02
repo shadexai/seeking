@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:seeking/ideas.dart';
 import 'package:seeking/music.dart';
 import 'package:seeking/newidea.dart';
 import 'package:seeking/db_helper.dart';
+import 'package:seeking/audio_handler.dart';
 
 class C {
   static const bg = Color(0xFF0A0A0F);
@@ -21,7 +23,17 @@ late MyAudioHandler audioHandler;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DBHelper.db;
+
+  // Request permissions on app start
+  await [
+    Permission.storage,
+    Permission.audio,
+    Permission.manageExternalStorage,
+  ].request();
+
   runApp(const SeekingApp());
+
+  // Initialize AudioService
   try {
     final handler = await AudioService.init(
       builder: () => MyAudioHandler(),
@@ -30,7 +42,7 @@ Future<void> main() async {
         androidNotificationChannelName: 'Seeking Music',
         androidNotificationOngoing: true,
       ),
-    ).timeout(const Duration(seconds: 10));
+    );
     audioHandler = handler as MyAudioHandler;
   } catch (e) {
     debugPrint('AudioService init failed: $e');
@@ -40,6 +52,7 @@ Future<void> main() async {
 
 class SeekingApp extends StatelessWidget {
   const SeekingApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -87,6 +100,7 @@ class SeekingApp extends StatelessWidget {
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -98,7 +112,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: C.bg, // ← THE FIX
+      backgroundColor: C.bg,
       body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
