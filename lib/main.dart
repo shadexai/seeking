@@ -47,10 +47,10 @@ class SeekingApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: C.bg,
-        canvasColor: C.bg,          // ✅ fixes grey TabBarView background
+        canvasColor: C.bg,
         colorScheme: const ColorScheme.dark(
           primary: C.accent,
-          surface: C.bg,            // ✅ ensures all surfaces use dark bg
+          surface: C.bg,
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: C.bg,
@@ -98,6 +98,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.bg, // ← THE FIX
       body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
