@@ -19,8 +19,12 @@ class MyAudioHandler extends BaseAudioHandler {
         playbackState.add(playbackState.value.copyWith(updatePosition: p)));
     _player.playerStateStream.listen((state) async {
       if (state.processingState == ProcessingState.completed) {
-        if (repeat) { await _player.seek(Duration.zero); await _player.play(); }
-        else await stop();
+        if (repeat) {
+          await _player.seek(Duration.zero);
+          await _player.play();
+        } else {
+          await stop();
+        }
       }
     });
     _player.currentIndexStream.listen((index) {
@@ -63,7 +67,7 @@ class MyAudioHandler extends BaseAudioHandler {
     ));
   }
 
-  Future<void> setPlaylist(List<<MediaItem> items, {int initialIndex = 0}) async {
+  Future<void> setPlaylist(List<MediaItem> items, {int initialIndex = 0}) async {
     if (items.isEmpty) return;
     _playlist = ConcatenatingAudioSource(
       children: items.map((i) => AudioSource.file(i.id)).toList(),
@@ -74,7 +78,7 @@ class MyAudioHandler extends BaseAudioHandler {
     await _player.play();
   }
 
-  Future<void> playFile(MediaItem item, List<<MediaItem> allItems) async {
+  Future<void> playFile(MediaItem item, List<MediaItem> allItems) async {
     final index = allItems.indexWhere((i) => i.id == item.id);
     await setPlaylist(allItems, initialIndex: index < 0 ? 0 : index);
   }
@@ -86,28 +90,46 @@ class MyAudioHandler extends BaseAudioHandler {
 
   Future<void> toggleRepeat() async {
     repeat = !repeat;
-    await _player.setLoopMode(repeat ? LoopMode.one : LoopMode.off);
+    // Use LoopMode.all to repeat the entire playlist, not just the current track
+    await _player.setLoopMode(repeat ? LoopMode.all : LoopMode.off);
   }
 
-  @override Future<void> play() => _player.play();
-  @override Future<void> pause() => _player.pause();
-  @override Future<void> seek(Duration position) => _player.seek(position);
-  @override Future<void> stop() async { await _player.stop(); await super.stop(); }
-  @override Future<void> skipToNext() async { if (_player.hasNext) await _player.seekToNext(); }
-  @override Future<void> skipToPrevious() async { if (_player.hasPrevious) await _player.seekToPrevious(); }
-  @override Future<void> onTaskRemoved() async { await _player.dispose(); await super.onTaskRemoved(); }
+  @override
+  Future<void> play() => _player.play();
+  @override
+  Future<void> pause() => _player.pause();
+  @override
+  Future<void> seek(Duration position) => _player.seek(position);
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+    await super.stop();
+  }
+  @override
+  Future<void> skipToNext() async {
+    if (_player.hasNext) await _player.seekToNext();
+  }
+  @override
+  Future<void> skipToPrevious() async {
+    if (_player.hasPrevious) await _player.seekToPrevious();
+  }
+  @override
+  Future<void> onTaskRemoved() async {
+    await _player.dispose();
+    await super.onTaskRemoved();
+  }
 }
 
 class MusicScreen extends StatefulWidget {
   const MusicScreen({super.key});
   @override
-  State<<MusicScreen> createState() => _MusicScreenState();
+  State<MusicScreen> createState() => _MusicScreenState();
 }
 
-class _MusicScreenState extends State<<MusicScreen> {
+class _MusicScreenState extends State<MusicScreen> {
   int _selectedTab = 0;
   List<SavedSong> _songs = [];
-  List<<Playlist> _playlists = [];
+  List<Playlist> _playlists = [];
   bool _loadingSongs = true;
   bool _loadingPlaylists = true;
   bool _picking = false;
@@ -131,20 +153,26 @@ class _MusicScreenState extends State<<MusicScreen> {
   Future<void> _loadSongs() async {
     setState(() => _loadingSongs = true);
     final songs = await DBHelper.getSongs();
-    setState(() { _songs = songs; _loadingSongs = false; });
+    setState(() {
+      _songs = songs;
+      _loadingSongs = false;
+    });
   }
 
   Future<void> _loadPlaylists() async {
     setState(() => _loadingPlaylists = true);
     final pls = await DBHelper.getPlaylists();
-    setState(() { _playlists = pls; _loadingPlaylists = false; });
+    setState(() {
+      _playlists = pls;
+      _loadingPlaylists = false;
+    });
   }
 
   List<SavedSong> get _filtered => _search.isEmpty
       ? _songs
       : _songs.where((s) => s.name.toLowerCase().contains(_search.toLowerCase())).toList();
 
-  List<<MediaItem> _toMediaItems(List<SavedSong> songs) => songs
+  List<MediaItem> _toMediaItems(List<SavedSong> songs) => songs
       .map((s) => MediaItem(id: s.path, title: s.name, artist: s.isVideo ? 'Video' : 'Audio'))
       .toList();
 
@@ -292,7 +320,6 @@ class _MusicScreenState extends State<<MusicScreen> {
       color: C.bg,
       child: Column(
         children: [
-          // Custom header (since we removed the inner Scaffold)
           Container(
             color: C.bg,
             padding: EdgeInsets.only(
@@ -328,7 +355,6 @@ class _MusicScreenState extends State<<MusicScreen> {
               ],
             ),
           ),
-          // Segmented toggle
           Container(
             color: C.bg,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -356,7 +382,6 @@ class _MusicScreenState extends State<<MusicScreen> {
               ),
             ),
           ),
-          // Content area
           Expanded(
             child: Container(
               color: C.bg,
@@ -458,7 +483,7 @@ class _MusicScreenState extends State<<MusicScreen> {
                         itemCount: _filtered.length,
                         itemBuilder: (_, i) {
                           final song = _filtered[i];
-                          return StreamBuilder<<MediaItem?>(
+                          return StreamBuilder<MediaItem?>(
                             stream: audioHandler.mediaItem,
                             builder: (_, snap) {
                               final playing = snap.data?.id == song.path;
@@ -686,12 +711,12 @@ class _NowPlayingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<<MediaItem?>(
+    return StreamBuilder<MediaItem?>(
       stream: audioHandler.mediaItem,
       builder: (_, mediaSnap) {
         final item = mediaSnap.data;
         if (item == null) return const SizedBox.shrink();
-        return StreamBuilder<<PlaybackState>(
+        return StreamBuilder<PlaybackState>(
           stream: audioHandler.playbackState,
           builder: (_, stateSnap) {
             final playing = stateSnap.data?.playing ?? false;
@@ -744,12 +769,18 @@ class _NowPlayingCard extends StatelessWidget {
                             IconButton(
                               icon: Icon(Icons.shuffle, size: 20,
                                   color: audioHandler.shuffle ? C.accentLight : C.hint),
-                              onPressed: () async { await audioHandler.toggleShuffle(); ss(() {}); },
+                              onPressed: () async {
+                                await audioHandler.toggleShuffle();
+                                ss(() {});
+                              },
                             ),
                             IconButton(
                               icon: Icon(Icons.repeat, size: 20,
                                   color: audioHandler.repeat ? C.accentLight : C.hint),
-                              onPressed: () async { await audioHandler.toggleRepeat(); ss(() {}); },
+                              onPressed: () async {
+                                await audioHandler.toggleRepeat();
+                                ss(() {});
+                              },
                             ),
                           ],
                         ),
