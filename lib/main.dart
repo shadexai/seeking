@@ -26,10 +26,11 @@ Future<void> main() async {
 
   // Request permissions on app start
   await [
-    Permission.storage,
-    Permission.audio,
-    Permission.manageExternalStorage,
-  ].request();
+  Permission.storage,
+  Permission.audio,
+  Permission.photos,
+  Permission.videos,
+].request();
 
   runApp(const SeekingApp());
 
