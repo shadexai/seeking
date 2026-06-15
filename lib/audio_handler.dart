@@ -8,6 +8,10 @@ class MyAudioHandler extends BaseAudioHandler {
   List<MediaItem> _queue = [];
   int _currentIndex = -1;
 
+  // Expose position and duration streams
+  Stream<Duration> get position => _player.positionStream;
+  Stream<Duration?> get duration => _player.durationStream;
+
   MyAudioHandler() {
     _setupPlayer();
     _listenToPositionChanges();
