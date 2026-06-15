@@ -176,45 +176,294 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   final List<Widget> _screens = const [IdeasScreen(), MusicScreen()];
+  
+  // Now Playing Bar state
+  bool _showNowPlaying = false;
+  double _sliderValue = 0.0;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _initNowPlaying();
+  }
+
+  void _initNowPlaying() {
+    // Listen to media item changes
+    audioHandler.mediaItem.listen((mediaItem) {
+      if (mounted) {
+        setState(() {
+          _showNowPlaying = mediaItem != null;
+        });
+      }
+    });
+
+    // Listen to playback state changes
+    audioHandler.playbackState.listen((state) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+
+    // Listen to position updates
+    audioHandler.position.listen((pos) {
+      if (mounted) {
+        setState(() {
+          _position = pos;
+          if (_duration.inMilliseconds > 0) {
+            _sliderValue = pos.inMilliseconds / _duration.inMilliseconds;
+          }
+        });
+      }
+    });
+
+    // Listen to duration updates
+    audioHandler.duration.listen((dur) {
+      if (mounted) {
+        setState(() {
+          _duration = dur ?? Duration.zero;
+          if (_duration.inMilliseconds > 0) {
+            _sliderValue = _position.inMilliseconds / _duration.inMilliseconds;
+          }
+        });
+      }
+    });
+  }
+
+  Widget _buildNowPlayingBar() {
+    return StreamBuilder<MediaItem?>(
+      stream: audioHandler.mediaItem,
+      builder: (context, snapshot) {
+        final mediaItem = snapshot.data;
+        if (mediaItem == null) return const SizedBox.shrink();
+
+        return StreamBuilder<PlaybackState>(
+          stream: audioHandler.playbackState,
+          builder: (context, playbackSnapshot) {
+            final playbackState = playbackSnapshot.data;
+            final isPlaying = playbackState?.playing ?? false;
+            final processingState = playbackState?.processingState;
+
+            return Container(
+              decoration: BoxDecoration(
+                color: C.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 15,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Progress slider
+                  SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 2,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                      activeTrackColor: C.accentLight,
+                      inactiveTrackColor: C.card,
+                      thumbColor: C.accentLight,
+                      overlayColor: C.accentLight.withOpacity(0.2),
+                    ),
+                    child: Slider(
+                      value: _sliderValue.clamp(0.0, 1.0),
+                      onChanged: (value) async {
+                        final newPosition = Duration(
+                          milliseconds: (_duration.inMilliseconds * value).round(),
+                        );
+                        await audioHandler.seek(newPosition);
+                      },
+                      onChangeEnd: (value) {
+                        setState(() {
+                          _sliderValue = value;
+                        });
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        // Track info
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              // Switch to music tab when tapping on now playing
+                              setState(() => _selectedIndex = 1);
+                            },
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: C.accent.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    mediaItem.extras?['isVideo'] == true
+                                        ? Icons.videocam_outlined
+                                        : Icons.music_note,
+                                    color: C.accentLight,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        mediaItem.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: C.textPrimary,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        mediaItem.artist ?? 'Unknown Artist',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: C.hint,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Time display
+                        Text(
+                          '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
+                          style: const TextStyle(
+                            color: C.hint,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Previous button
+                        IconButton(
+                          icon: const Icon(Icons.skip_previous, size: 24),
+                          color: C.textSecondary,
+                          onPressed: audioHandler.skipToPrevious,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                        ),
+                        // Play/Pause button
+                        Container(
+                          decoration: BoxDecoration(
+                            color: C.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: Icon(
+                              isPlaying ? Icons.pause : Icons.play_arrow,
+                              size: 28,
+                              color: Colors.white,
+                            ),
+                            onPressed: () {
+                              if (isPlaying) {
+                                audioHandler.pause();
+                              } else {
+                                audioHandler.play();
+                              }
+                            },
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Next button
+                        IconButton(
+                          icon: const Icon(Icons.skip_next, size: 24),
+                          color: C.textSecondary,
+                          onPressed: audioHandler.skipToNext,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: C.bg,
       body: IndexedStack(index: _selectedIndex, children: _screens),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: C.surface,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Now Playing Bar (appears when music is playing)
+          _buildNowPlayingBar(),
+          // Navigation Bar
+          Container(
+            decoration: BoxDecoration(
+              color: C.surface,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, -5),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: NavigationBar(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-            backgroundColor: Colors.transparent,
-            indicatorColor: C.accent.withOpacity(0.2),
-            elevation: 0,
-            height: 70,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.lightbulb_outline, size: 24),
-                selectedIcon: Icon(Icons.lightbulb, color: C.accentLight, size: 28),
-                label: 'Ideas',
+            child: SafeArea(
+              child: NavigationBar(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+                backgroundColor: Colors.transparent,
+                indicatorColor: C.accent.withOpacity(0.2),
+                elevation: 0,
+                height: 70,
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.lightbulb_outline, size: 24),
+                    selectedIcon: Icon(Icons.lightbulb, color: C.accentLight, size: 28),
+                    label: 'Ideas',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.music_note_outlined, size: 24),
+                    selectedIcon: Icon(Icons.music_note, color: C.accentLight, size: 28),
+                    label: 'Music',
+                  ),
+                ],
               ),
-              NavigationDestination(
-                icon: Icon(Icons.music_note_outlined, size: 24),
-                selectedIcon: Icon(Icons.music_note, color: C.accentLight, size: 28),
-                label: 'Music',
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
