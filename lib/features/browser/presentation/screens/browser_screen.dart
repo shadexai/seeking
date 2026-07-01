@@ -34,7 +34,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     // Initialize WebView with Android-specific settings
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
+      ..setBackgroundColor(Colors.transparent)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
@@ -113,8 +113,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
                     ),
                   ),
 
-                // Error Page Overlay
-                if (provider.errorMessage != null)
+                // Error Page Overlay - only show for non-cache errors
+                if (provider.errorMessage != null && 
+                    !provider.errorMessage!.contains('ERR_CACHE_MISS') &&
+                    !provider.errorMessage!.contains('cache'))
                   Positioned.fill(
                     child: Container(
                       color: Theme.of(context).colorScheme.background,

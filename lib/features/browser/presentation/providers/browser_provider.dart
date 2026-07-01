@@ -40,7 +40,7 @@ class BrowserProvider extends ChangeNotifier {
             url: url,
             isLoading: true,
             loadingProgress: 0.0,
-            errorMessage: null,
+            errorMessage: null, // Clear any previous errors
           );
           notifyListeners();
         },
@@ -48,8 +48,10 @@ class BrowserProvider extends ChangeNotifier {
           _updatePageInfo();
         },
         onWebResourceError: (WebResourceError error) {
+          // Only show error page for actual navigation errors, not cache issues
           _currentPage = _currentPage.copyWith(
             isLoading: false,
+            loadingProgress: 1.0,
             errorMessage: error.description,
           );
           notifyListeners();
