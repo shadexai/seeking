@@ -65,7 +65,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
     if (event is! KeyDownEvent) return false;
 
     // Handle back button
-    if (event.logicalKey == LogicalKeyboardKey.back) {
+    if (event.logicalKey == LogicalKeyboardKey.back ||
+        event.logicalKey == LogicalKeyboardKey.goBack) {
       final provider = Provider.of<BrowserProvider>(context, listen: false);
       if (provider.canGoBack) {
         provider.goBack();
@@ -85,7 +86,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   @override
   Widget build(BuildContext context) {
     return KeyboardListener(
-      focusNode: FocusNode(autofocus: true),
+      focusNode: FocusNode()..requestFocus(),
       onKeyEvent: (KeyEvent event) async {
         await _handleKeyEvent(event);
       },
