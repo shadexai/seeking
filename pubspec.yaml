@@ -1,5 +1,5 @@
-name: seeking
-description: "Ideas Vault + Local Music Player"
+name: seeking_browser
+description: "A modern web browser built specifically for Android TV"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -11,23 +11,29 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-
-  # Database - SQLite
+  
+  # WebView for browsing
+  webview_flutter: ^4.8.0
+  webview_flutter_android: ^3.16.0
+  
+  # State Management
+  provider: ^6.1.2
+  
+  # Storage for settings, bookmarks, history
+  shared_preferences: ^2.2.3
   sqflite: ^2.3.3
   path: ^1.9.0
   path_provider: ^2.1.2
-
-  # IDs
+  
+  # Utilities
   uuid: ^4.5.1
-
-  # File picking
-  file_picker: ^8.0.0
-
-  # Audio
-  just_audio: ^0.9.40
-  audio_session: ^0.1.21
-  audio_service: ^0.18.15
-  permission_handler: ^11.3.1
+  url_launcher: ^6.3.0
+  
+  # Functional programming - Either type for error handling
+  dartz: ^0.10.1
+  
+  # HTTP for potential future features
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:
@@ -37,9 +43,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
+  
   assets:
-    - assets/icon.png
+    - assets/
 
 flutter_launcher_icons:
   android: true
