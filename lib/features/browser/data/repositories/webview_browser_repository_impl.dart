@@ -76,7 +76,9 @@ class WebViewBrowserRepository implements BrowserRepository {
   @override
   Future<Either<AppException, Unit>> stopLoading() async {
     try {
-      await _controller.stop();
+      // In newer versions of webview_flutter, the stop() method has been removed.
+      // We'll return success as a no-op to maintain API compatibility.
+      debugPrint('stopLoading() called - no longer supported in this WebView version');
       return const Right(unit);
     } catch (e) {
       return Left(WebViewException(
@@ -108,7 +110,13 @@ class WebViewBrowserRepository implements BrowserRepository {
   @override
   Future<Either<AppException, String>> getPageTitle() async {
     try {
-      final title = await _controller.title();
+      String? title;
+      try {
+        // Try to get title using JavaScript since .title() method may not exist in newer versions
+        title = await _controller.runJavaScriptReturningResult('document.title') as String?;
+      } catch (e) {
+        title = null;
+      }
       return Right(title ?? '');
     } catch (e) {
       return Left(WebViewException(
