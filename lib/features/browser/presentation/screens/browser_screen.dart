@@ -64,9 +64,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
     // Only handle key down events
     if (event is! KeyDownEvent) return false;
 
-    // Handle back button
-    if (event.logicalKey == LogicalKeyboardKey.back ||
-        event.logicalKey == LogicalKeyboardKey.goBack) {
+    // Handle back button - use goBack which is the correct constant in newer Flutter versions
+    if (event.logicalKey == LogicalKeyboardKey.goBack) {
       final provider = Provider.of<BrowserProvider>(context, listen: false);
       if (provider.canGoBack) {
         provider.goBack();
