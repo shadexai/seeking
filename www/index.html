@@ -21,6 +21,11 @@
     flex-direction: column;
     min-height: 100vh;
     min-height: 100dvh;
+    animation: appIn 0.45s ease;
+  }
+  @keyframes appIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   :root {
@@ -120,9 +125,13 @@
   .empty h2 { font-family: 'Newsreader', serif; font-style: italic; color: var(--ink); font-size: 20px; font-weight: 500; }
   .empty p { font-size: 13px; line-height: 1.5; max-width: 260px; }
 
-  .row { display: flex; }
+  .row { display: flex; animation: msgIn 0.32s cubic-bezier(.22,1,.36,1) both; }
   .row.user { justify-content: flex-end; }
   .row.assistant { justify-content: flex-start; }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
 
   .bubble {
     max-width: 82%;
@@ -130,13 +139,13 @@
     border-radius: 18px;
     font-size: 15px;
     line-height: 1.45;
-    white-space: pre-wrap;
     word-wrap: break-word;
   }
   .row.user .bubble {
     background: var(--teal);
     color: #0E1613;
     border-bottom-right-radius: 5px;
+    white-space: pre-wrap;
   }
   .row.assistant .bubble {
     background: var(--surface);
@@ -149,7 +158,41 @@
     border: 1px solid rgba(224,104,79,0.35);
     color: #F0AEA0;
     font-size: 13px;
+    white-space: pre-wrap;
   }
+
+  /* ---------- Markdown content (assistant messages) ---------- */
+  .bubble strong { color: var(--ink); font-weight: 700; }
+  .bubble em { font-style: italic; }
+  .bubble a { color: var(--teal); text-decoration: underline; text-decoration-color: rgba(95,184,168,0.4); }
+  .bubble .md-h { display: block; font-size: 15.5px; margin: 2px 0 4px; color: var(--amber); }
+  .bubble code {
+    background: rgba(255,255,255,0.08);
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+  }
+  .bubble pre.md-pre {
+    background: #0E1117;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 11px 13px;
+    margin: 8px 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .bubble pre.md-pre code {
+    background: none;
+    padding: 0;
+    font-size: 12.5px;
+    line-height: 1.55;
+    display: block;
+    white-space: pre;
+    color: #C9D1D9;
+  }
+  .bubble ul.md-list, .bubble ol.md-list { margin: 6px 0 6px 20px; }
+  .bubble li { margin-bottom: 4px; }
 
   .typing { display: flex; gap: 4px; padding: 6px 4px; }
   .typing span {
@@ -208,12 +251,15 @@
   .overlay {
     position: fixed; inset: 0;
     background: rgba(10,12,16,0.72);
-    display: none;
+    display: flex;
     align-items: flex-end;
     justify-content: center;
     z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
   }
-  .overlay.show { display: flex; }
+  .overlay.show { opacity: 1; pointer-events: auto; }
   .sheet {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -222,7 +268,10 @@
     max-width: 480px;
     padding: 22px 20px;
     padding-bottom: max(22px, env(safe-area-inset-bottom));
+    transform: translateY(24px);
+    transition: transform 0.32s cubic-bezier(.22,1,.36,1);
   }
+  .overlay.show .sheet { transform: translateY(0); }
   .sheet h3 {
     font-family: 'Newsreader', serif;
     font-style: italic;
@@ -446,6 +495,82 @@ If you learn a durable fact worth remembering across future chats (the user's na
     });
   }
 
+  // ---------- Minimal markdown renderer (no external deps) ----------
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function convertLists(text) {
+    const lines = text.split('\n');
+    let html = '';
+    let inUl = false, inOl = false;
+    for (const line of lines) {
+      const ulMatch = line.match(/^\s*[-*]\s+(.+)$/);
+      const olMatch = line.match(/^\s*\d+\.\s+(.+)$/);
+      if (ulMatch) {
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (!inUl) { html += '<ul class="md-list">'; inUl = true; }
+        html += '<li>' + ulMatch[1] + '</li>';
+        continue;
+      }
+      if (olMatch) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (!inOl) { html += '<ol class="md-list">'; inOl = true; }
+        html += '<li>' + olMatch[1] + '</li>';
+        continue;
+      }
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (inOl) { html += '</ol>'; inOl = false; }
+      html += line + '\n';
+    }
+    if (inUl) html += '</ul>';
+    if (inOl) html += '</ol>';
+    return html;
+  }
+
+  function renderMarkdown(raw) {
+    // 1. Pull out fenced code blocks so nothing inside them gets formatted
+    const codeBlocks = [];
+    let text = raw.replace(/```[a-zA-Z]*\n?([\s\S]*?)```/g, (m, code) => {
+      codeBlocks.push(code.replace(/\n$/, ''));
+      return '\u0000CB' + (codeBlocks.length - 1) + '\u0000';
+    });
+
+    // 2. Escape everything else so the model can't inject raw HTML
+    text = escapeHtml(text);
+
+    // 3. Inline code
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // 4. Bold / italic
+    text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    text = text.replace(/(?<![A-Za-z0-9])_([^_]+)_(?![A-Za-z0-9])/g, '<em>$1</em>');
+
+    // 5. Links
+    text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    // 6. Headers (rendered inline, not full block headers, to fit a chat bubble)
+    text = text.replace(/^#{1,3}\s+(.+)$/gm, '<strong class="md-h">$1</strong>');
+
+    // 7. Lists
+    text = convertLists(text);
+
+    // 8. Remaining newlines -> <br>
+    text = text.replace(/\n/g, '<br>');
+
+    // 9. Restore code blocks
+    text = text.replace(/\u0000CB(\d+)\u0000/g, (m, idx) => {
+      return '<pre class="md-pre"><code>' + escapeHtml(codeBlocks[idx]) + '</code></pre>';
+    });
+
+    return text;
+  }
+
   function renderHistory() {
     chatEl.innerHTML = '';
     if (history.length === 0) {
@@ -462,7 +587,11 @@ If you learn a durable fact worth remembering across future chats (the user's na
     row.className = 'row ' + role;
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.textContent = text;
+    if (role === 'assistant') {
+      bubble.innerHTML = renderMarkdown(text);
+    } else {
+      bubble.textContent = text;
+    }
     row.appendChild(bubble);
     chatEl.appendChild(row);
     if (animate) scrollToBottom();
@@ -554,7 +683,7 @@ If you learn a durable fact worth remembering across future chats (the user's na
   async function callGroq(msgs) {
     const apiKey = getKey();
     const model = getModel();
-    const trimmed = msgs.slice(-20); // keep recent context lean
+    const trimmed = msgs.slice(-60); // generous context — quality over token-thrift
 
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -566,7 +695,7 @@ If you learn a durable fact worth remembering across future chats (the user's na
         model: model,
         messages: [{ role: 'system', content: buildSystemMessage() }, ...trimmed],
         temperature: 0.6,
-        max_tokens: 1024
+        max_tokens: 4096
       })
     });
 
@@ -581,7 +710,7 @@ If you learn a durable fact worth remembering across future chats (the user's na
   }
 
   function persistHistory() {
-    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(history.slice(-100)));
+    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(history.slice(-200)));
   }
 
   // ---------- Settings sheet ----------
