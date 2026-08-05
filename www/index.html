@@ -231,7 +231,7 @@
   }
   .sheet .sub { font-size: 12.5px; color: var(--ink-dim); margin-bottom: 18px; line-height: 1.5; }
   label { font-size: 12px; color: var(--ink-dim); display: block; margin-bottom: 6px; margin-top: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
-  input[type="password"], select {
+  input[type="password"], select, textarea.field {
     width: 100%;
     background: var(--surface-2);
     border: 1px solid var(--line);
@@ -242,6 +242,28 @@
     font-family: inherit;
   }
   select { appearance: none; }
+  textarea.field { resize: vertical; min-height: 80px; line-height: 1.5; }
+  .label-row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 14px; margin-bottom: 6px; }
+  .label-row label { margin: 0; }
+  .link-btn { font-size: 11px; color: var(--teal); background: none; border: none; cursor: pointer; text-transform: none; letter-spacing: 0; padding: 0; }
+  .sheet-scroll { max-height: 62vh; overflow-y: auto; padding-right: 2px; margin-right: -2px; }
+  .memory-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .memory-item {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .memory-item span { flex: 1; line-height: 1.4; }
+  .memory-item button {
+    background: none; border: none; color: var(--ink-dim);
+    font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px;
+  }
+  .memory-item button:active { color: var(--danger); }
+  .memory-empty { font-size: 12.5px; color: var(--ink-dim); margin-top: 4px; }
   .sheet-actions { display: flex; gap: 10px; margin-top: 20px; }
   .btn {
     flex: 1;
@@ -291,18 +313,34 @@
 <div class="overlay" id="overlay">
   <div class="sheet">
     <h3>Setup</h3>
-    <div class="sub">Your Groq API key lives only on this device (local storage) — it's never bundled into the app itself.</div>
+    <div class="sub">Everything below lives only on this device (local storage) — none of it is bundled into the app itself.</div>
 
-    <label for="apiKeyInput">Groq API key</label>
-    <input type="password" id="apiKeyInput" placeholder="gsk_..." autocomplete="off" />
+    <div class="sheet-scroll">
+      <label for="apiKeyInput">Groq API key</label>
+      <input type="password" id="apiKeyInput" placeholder="gsk_..." autocomplete="off" />
+      <div class="hint">Get a free key at <a href="https://console.groq.com/keys" id="consoleLink">console.groq.com/keys</a>.</div>
 
-    <label for="modelSelect">Model</label>
-    <select id="modelSelect">
-      <option value="moonshotai/kimi-k2-instruct-0905">Kimi K2 — highest quality</option>
-      <option value="openai/gpt-oss-120b">GPT-OSS 120B — fast &amp; strong</option>
-      <option value="openai/gpt-oss-20b">GPT-OSS 20B — fastest</option>
-    </select>
-    <div class="hint">Get a free key at <a href="https://console.groq.com/keys" id="consoleLink">console.groq.com/keys</a>.</div>
+      <label for="modelSelect">Model</label>
+      <select id="modelSelect">
+        <option value="moonshotai/kimi-k2-instruct-0905">Kimi K2 — highest quality</option>
+        <option value="openai/gpt-oss-120b">GPT-OSS 120B — fast &amp; strong</option>
+        <option value="openai/gpt-oss-20b">GPT-OSS 20B — fastest</option>
+      </select>
+
+      <div class="label-row">
+        <label for="systemPromptInput" style="margin:0;">System prompt</label>
+        <button class="link-btn" id="resetPromptBtn" type="button">Reset to default</button>
+      </div>
+      <textarea class="field" id="systemPromptInput" rows="5" placeholder="How should Lara behave?"></textarea>
+      <div class="hint">This defines Lara's personality and rules. Edit it freely — your changes are saved automatically.</div>
+
+      <div class="label-row">
+        <label style="margin:0;">Memory</label>
+        <button class="link-btn" id="clearMemoryBtn" type="button">Clear all</button>
+      </div>
+      <div class="memory-list" id="memoryList"></div>
+      <div class="hint">Lara saves things worth remembering here as you chat — names, preferences, ongoing projects. Delete anything you don't want kept.</div>
+    </div>
 
     <div class="sheet-actions">
       <button class="btn btn-ghost" id="clearHistoryBtn">Clear chat</button>
@@ -324,22 +362,89 @@
   const settingsBtn = document.getElementById('settingsBtn');
   const apiKeyInput = document.getElementById('apiKeyInput');
   const modelSelect = document.getElementById('modelSelect');
+  const systemPromptInput = document.getElementById('systemPromptInput');
+  const resetPromptBtn = document.getElementById('resetPromptBtn');
+  const memoryListEl = document.getElementById('memoryList');
+  const clearMemoryBtn = document.getElementById('clearMemoryBtn');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 
   const STORAGE_KEY = 'lara_api_key';
   const STORAGE_MODEL = 'lara_model';
   const STORAGE_HISTORY = 'lara_history';
+  const STORAGE_SYSTEM_PROMPT = 'lara_system_prompt';
+  const STORAGE_MEMORY = 'lara_memory';
 
-  const SYSTEM_PROMPT = `You are Lara, a smart, efficient personal assistant living in the user's own app on their phone.
+  const DEFAULT_SYSTEM_PROMPT = `You are Lara, a smart, efficient personal assistant living in the user's own app on their phone.
 Be genuinely useful: answer directly, skip filler and preamble, and match your length to the question — short answers for simple things, more detail only when it's actually needed.
 Have a warm, direct, slightly witty personality, but never at the expense of clarity. Ask a clarifying question only when you truly can't proceed without one.`;
 
+  // Fixed protocol appended after the (editable) personality prompt, so memory
+  // keeps working no matter how the user customizes Lara's personality.
+  const MEMORY_PROTOCOL = `
+If you learn a durable fact worth remembering across future chats (the user's name, a preference, an ongoing project, a recurring detail), add it at the very end of your reply on its own line(s) using this exact format: [[remember: short fact here]]. Use it rarely — only for things genuinely worth keeping, one tag per fact, never for one-off details. Never mention this tag or explain it to the user; it is stripped before they see your message.`;
+
   let history = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || '[]');
+  let memory = JSON.parse(localStorage.getItem(STORAGE_MEMORY) || '[]');
   let sending = false;
 
   function getKey() { return localStorage.getItem(STORAGE_KEY) || ''; }
   function getModel() { return localStorage.getItem(STORAGE_MODEL) || 'moonshotai/kimi-k2-instruct-0905'; }
+  function getSystemPrompt() { return localStorage.getItem(STORAGE_SYSTEM_PROMPT) || DEFAULT_SYSTEM_PROMPT; }
+
+  function buildSystemMessage() {
+    let content = getSystemPrompt() + '\n' + MEMORY_PROTOCOL;
+    if (memory.length) {
+      content += '\n\nKnown context about the user (from past conversations):\n' + memory.map(m => '- ' + m).join('\n');
+    }
+    return content;
+  }
+
+  function persistMemory() {
+    localStorage.setItem(STORAGE_MEMORY, JSON.stringify(memory));
+  }
+
+  function extractMemory(text) {
+    const tagRe = /\[\[remember:\s*(.+?)\s*\]\]/gi;
+    let match;
+    const found = [];
+    while ((match = tagRe.exec(text)) !== null) found.push(match[1].trim());
+    const clean = text.replace(tagRe, '').trim();
+    if (found.length) {
+      found.forEach(fact => {
+        if (fact && !memory.some(m => m.toLowerCase() === fact.toLowerCase())) {
+          memory.push(fact);
+        }
+      });
+      memory = memory.slice(-40); // cap so context doesn't bloat
+      persistMemory();
+    }
+    return clean;
+  }
+
+  function renderMemoryList() {
+    memoryListEl.innerHTML = '';
+    if (memory.length === 0) {
+      memoryListEl.innerHTML = '<div class="memory-empty">Nothing saved yet.</div>';
+      return;
+    }
+    memory.forEach((fact, i) => {
+      const item = document.createElement('div');
+      item.className = 'memory-item';
+      const span = document.createElement('span');
+      span.textContent = fact;
+      const btn = document.createElement('button');
+      btn.textContent = '✕';
+      btn.addEventListener('click', () => {
+        memory.splice(i, 1);
+        persistMemory();
+        renderMemoryList();
+      });
+      item.appendChild(span);
+      item.appendChild(btn);
+      memoryListEl.appendChild(item);
+    });
+  }
 
   function renderHistory() {
     chatEl.innerHTML = '';
@@ -459,7 +564,7 @@ Have a warm, direct, slightly witty personality, but never at the expense of cla
       },
       body: JSON.stringify({
         model: model,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...trimmed],
+        messages: [{ role: 'system', content: buildSystemMessage() }, ...trimmed],
         temperature: 0.6,
         max_tokens: 1024
       })
@@ -471,7 +576,8 @@ Have a warm, direct, slightly witty personality, but never at the expense of cla
       throw new Error('Groq API error (' + res.status + ')');
     }
     const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || '(empty response)';
+    const raw = data.choices?.[0]?.message?.content?.trim() || '(empty response)';
+    return extractMemory(raw);
   }
 
   function persistHistory() {
@@ -482,6 +588,8 @@ Have a warm, direct, slightly witty personality, but never at the expense of cla
   function openSettings() {
     apiKeyInput.value = getKey();
     modelSelect.value = getModel();
+    systemPromptInput.value = getSystemPrompt();
+    renderMemoryList();
     overlay.classList.add('show');
   }
   function closeSettings() { overlay.classList.remove('show'); }
@@ -489,10 +597,22 @@ Have a warm, direct, slightly witty personality, but never at the expense of cla
   settingsBtn.addEventListener('click', openSettings);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSettings(); });
 
+  resetPromptBtn.addEventListener('click', () => {
+    systemPromptInput.value = DEFAULT_SYSTEM_PROMPT;
+  });
+
+  clearMemoryBtn.addEventListener('click', () => {
+    memory = [];
+    persistMemory();
+    renderMemoryList();
+  });
+
   saveSettingsBtn.addEventListener('click', () => {
     const key = apiKeyInput.value.trim();
     if (key) localStorage.setItem(STORAGE_KEY, key);
     localStorage.setItem(STORAGE_MODEL, modelSelect.value);
+    const prompt = systemPromptInput.value.trim();
+    localStorage.setItem(STORAGE_SYSTEM_PROMPT, prompt || DEFAULT_SYSTEM_PROMPT);
     closeSettings();
   });
 
