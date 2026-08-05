@@ -160,6 +160,22 @@
     font-size: 13px;
     white-space: pre-wrap;
   }
+  .retry-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 9px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    background: rgba(224,104,79,0.16);
+    border: 1px solid rgba(224,104,79,0.4);
+    color: #F5B7AB;
+    font-size: 12.5px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .retry-btn:active { background: rgba(224,104,79,0.28); }
 
   /* ---------- Markdown content (assistant messages) ---------- */
   .bubble strong { color: var(--ink); font-weight: 700; }
@@ -371,8 +387,7 @@
 
       <label for="modelSelect">Model</label>
       <select id="modelSelect">
-        <option value="moonshotai/kimi-k2-instruct-0905">Kimi K2 — highest quality</option>
-        <option value="openai/gpt-oss-120b">GPT-OSS 120B — fast &amp; strong</option>
+        <option value="openai/gpt-oss-120b">GPT-OSS 120B — highest quality</option>
         <option value="openai/gpt-oss-20b">GPT-OSS 20B — fastest</option>
       </select>
 
@@ -437,8 +452,16 @@ If you learn a durable fact worth remembering across future chats (the user's na
   let memory = JSON.parse(localStorage.getItem(STORAGE_MEMORY) || '[]');
   let sending = false;
 
+  // Calls the native Haptics plugin if @capacitor/haptics is installed; silently
+  // does nothing on web preview or if the plugin isn't present.
+  function haptic(style) {
+    try {
+      window.Capacitor?.Plugins?.Haptics?.impact({ style: style || 'Light' });
+    } catch (e) { /* no-op */ }
+  }
+
   function getKey() { return localStorage.getItem(STORAGE_KEY) || ''; }
-  function getModel() { return localStorage.getItem(STORAGE_MODEL) || 'moonshotai/kimi-k2-instruct-0905'; }
+  function getModel() { return localStorage.getItem(STORAGE_MODEL) || 'openai/gpt-oss-120b'; }
   function getSystemPrompt() { return localStorage.getItem(STORAGE_SYSTEM_PROMPT) || DEFAULT_SYSTEM_PROMPT; }
 
   function buildSystemMessage() {
@@ -653,34 +676,79 @@ If you learn a durable fact worth remembering across future chats (the user's na
     addBubble('user', text, true);
     history.push({ role: 'user', content: text });
     persistHistory();
+    haptic('Light');
 
+    await sendToModel();
+  }
+
+  async function sendToModel() {
     sending = true;
     setThinking(true);
     addTypingIndicator();
 
+    let assistantBubble = null;
+    let full = '';
+
     try {
-      const reply = await callGroq(history);
-      removeTypingIndicator();
-      addBubble('assistant', reply, true);
-      history.push({ role: 'assistant', content: reply });
+      full = await streamGroq(history, (acc) => {
+        if (!assistantBubble) {
+          removeTypingIndicator();
+          assistantBubble = addBubble('assistant', '', true);
+          haptic('Medium');
+        }
+        assistantBubble.textContent = acc;
+        scrollToBottom();
+      });
+
+      removeTypingIndicator(); // in case the stream ended with no content at all
+
+      const clean = extractMemory(full);
+      if (assistantBubble) {
+        assistantBubble.innerHTML = renderMarkdown(clean);
+      } else {
+        assistantBubble = addBubble('assistant', clean, true);
+      }
+      history.push({ role: 'assistant', content: clean });
       persistHistory();
     } catch (err) {
       removeTypingIndicator();
-      const row = document.createElement('div');
-      row.className = 'row error';
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
-      bubble.textContent = 'Something went wrong: ' + err.message;
-      row.appendChild(bubble);
-      chatEl.appendChild(row);
-      scrollToBottom();
+      // Finalize whatever partial text arrived before the error, then offer retry.
+      if (assistantBubble && assistantBubble.textContent.trim()) {
+        assistantBubble.innerHTML = renderMarkdown(assistantBubble.textContent);
+      }
+      const partialRow = assistantBubble ? assistantBubble.closest('.row') : null;
+      showErrorRow(err.message, partialRow);
     } finally {
       sending = false;
       setThinking(false);
     }
   }
 
-  async function callGroq(msgs) {
+  function showErrorRow(message, partialRowToClear) {
+    const row = document.createElement('div');
+    row.className = 'row error';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = 'Something went wrong: ' + message;
+
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'retry-btn';
+    retryBtn.textContent = '↻ Retry';
+    retryBtn.addEventListener('click', () => {
+      haptic('Light');
+      row.remove();
+      if (partialRowToClear) partialRowToClear.remove();
+      sendToModel();
+    });
+
+    bubble.appendChild(document.createElement('br'));
+    bubble.appendChild(retryBtn);
+    row.appendChild(bubble);
+    chatEl.appendChild(row);
+    scrollToBottom();
+  }
+
+  async function streamGroq(msgs, onDelta) {
     const apiKey = getKey();
     const model = getModel();
     const trimmed = msgs.slice(-60); // generous context — quality over token-thrift
@@ -695,18 +763,46 @@ If you learn a durable fact worth remembering across future chats (the user's na
         model: model,
         messages: [{ role: 'system', content: buildSystemMessage() }, ...trimmed],
         temperature: 0.6,
-        max_tokens: 4096
+        max_tokens: 4096,
+        stream: true
       })
     });
 
     if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
       if (res.status === 401) throw new Error('Invalid API key — check it in Settings.');
       throw new Error('Groq API error (' + res.status + ')');
     }
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content?.trim() || '(empty response)';
-    return extractMemory(raw);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let full = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep any incomplete trailing line for the next chunk
+
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const payload = t.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const json = JSON.parse(payload);
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            onDelta(full);
+          }
+        } catch (e) { /* ignore any malformed partial chunk */ }
+      }
+    }
+
+    if (!full) throw new Error('empty response from model');
+    return full;
   }
 
   function persistHistory() {
