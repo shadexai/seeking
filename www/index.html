@@ -47,6 +47,9 @@
     position: sticky;
     top: 0;
     z-index: 10;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
   }
   header h1 {
     font-size: 23px;
@@ -58,6 +61,7 @@
     color: var(--ink-dim);
     margin-top: 4px;
   }
+  header .round-btn { margin-top: 2px; }
 
   /* ---------- Home / goal list ---------- */
   #home { flex: 1; overflow-y: auto; padding: 16px 16px 100px; }
@@ -299,7 +303,18 @@
     transition: transform 0.32s cubic-bezier(.22,1,.36,1);
   }
   .overlay.show .sheet { transform: translateY(0); }
+  .sheet { transition: transform 0.32s cubic-bezier(.22,1,.36,1), padding-bottom 0.15s ease; }
   .sheet h3 { font-size: 18px; font-weight: 700; margin-bottom: 18px; }
+
+  .field-error {
+    font-size: 11.5px;
+    color: var(--danger);
+    margin-top: 6px;
+    display: none;
+    line-height: 1.4;
+  }
+  .field-error.show { display: block; }
+  input.invalid { border-color: var(--danger); }
 
   label { font-size: 11px; color: var(--ink-dim); display: block; margin-bottom: 7px; margin-top: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
   label:first-of-type { margin-top: 0; }
@@ -341,6 +356,33 @@
   }
   .emoji-row button.active { border-color: var(--ink); background: var(--surface); }
 
+  .currency-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .currency-grid button {
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink-dim);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .currency-grid button.active { background: var(--surface); border-color: var(--ink); color: var(--ink); }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 13px 15px;
+    margin-top: 10px;
+    cursor: pointer;
+  }
+  .settings-row .t { font-size: 14px; font-weight: 600; }
+  .settings-row .s { font-size: 11.5px; color: var(--ink-dim); margin-top: 2px; }
+  .settings-row .chev { color: var(--ink-dim); font-size: 14px; }
+
   .sheet-actions { display: flex; gap: 10px; margin-top: 22px; }
   .btn { flex: 1; padding: 14px; border-radius: 13px; border: none; font-size: 14.5px; font-weight: 700; cursor: pointer; }
   .btn-primary { background: var(--ink); color: #14171C; }
@@ -350,8 +392,11 @@
 <body>
 
 <header>
-  <h1>Seeking</h1>
-  <div class="stats" id="statsLine">No goals yet</div>
+  <div>
+    <h1>Seeking</h1>
+    <div class="stats" id="statsLine">No goals yet</div>
+  </div>
+  <button class="round-btn" id="openSettingsBtn" aria-label="Settings">⚙</button>
 </header>
 
 <main id="home"></main>
@@ -362,28 +407,35 @@
 <div id="detailScreen">
   <div class="detail-header">
     <button class="round-btn" id="backBtn" aria-label="Back">←</button>
-    <button class="round-btn danger" id="deleteGoalBtn" aria-label="Delete goal">🗑</button>
+    <div style="display:flex; gap:10px;">
+      <button class="round-btn" id="editGoalBtn" aria-label="Edit goal">✏️</button>
+      <button class="round-btn danger" id="deleteGoalBtn" aria-label="Delete goal">🗑</button>
+    </div>
   </div>
   <div class="detail-body" id="detailBody"></div>
 </div>
 
-<!-- Add goal sheet -->
+<!-- Add / Edit goal sheet -->
 <div class="overlay" id="addOverlay">
   <div class="sheet">
-    <h3>New goal</h3>
+    <h3 id="goalSheetTitle">New goal</h3>
 
-    <label style="margin-top:0;">Type</label>
-    <div class="type-toggle">
-      <button type="button" class="savings active" id="typeSavingsBtn">💰 Savings</button>
-      <button type="button" class="streak" id="typeStreakBtn">🔥 Streak</button>
+    <div id="typeSection">
+      <label style="margin-top:0;">Type</label>
+      <div class="type-toggle">
+        <button type="button" class="savings active" id="typeSavingsBtn">💰 Savings</button>
+        <button type="button" class="streak" id="typeStreakBtn">🔥 Streak</button>
+      </div>
     </div>
 
-    <label for="goalNameInput">Name</label>
-    <input type="text" id="goalNameInput" placeholder="e.g. Japan trip" />
+    <label for="goalNameInput" id="goalNameLabel">Name</label>
+    <input type="text" id="goalNameInput" placeholder="e.g. Japan trip" maxlength="60" />
+    <div class="field-error" id="goalNameError">Please enter a name.</div>
 
     <div id="targetField">
       <label for="goalTargetInput">Target amount</label>
-      <input type="number" id="goalTargetInput" placeholder="2000" inputmode="decimal" />
+      <input type="number" id="goalTargetInput" placeholder="2000" inputmode="decimal" min="0.01" step="0.01" />
+      <div class="field-error" id="goalTargetError">Enter a target greater than 0.</div>
     </div>
 
     <label>Icon</label>
@@ -401,9 +453,10 @@
   <div class="sheet">
     <h3>Log a contribution</h3>
     <label style="margin-top:0;" for="logAmountInput">Amount</label>
-    <input type="number" id="logAmountInput" placeholder="100" inputmode="decimal" />
+    <input type="number" id="logAmountInput" placeholder="100" inputmode="decimal" min="0.01" step="0.01" />
+    <div class="field-error" id="logAmountError">Enter an amount greater than 0.</div>
     <label for="logNoteInput">Note (optional)</label>
-    <input type="text" id="logNoteInput" placeholder="Freelance payment" />
+    <input type="text" id="logNoteInput" placeholder="Freelance payment" maxlength="80" />
     <div class="sheet-actions">
       <button class="btn btn-ghost" id="cancelLogBtn" type="button">Cancel</button>
       <button class="btn btn-primary" id="saveLogBtn" type="button">Add</button>
@@ -411,44 +464,105 @@
   </div>
 </div>
 
+<!-- Settings sheet -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <h3>Settings</h3>
+
+    <label style="margin-top:0;">Currency</label>
+    <div class="currency-grid" id="currencyGrid">
+      <button type="button" data-c="USD">USD ($)</button>
+      <button type="button" data-c="EUR">EUR (€)</button>
+      <button type="button" data-c="GBP">GBP (£)</button>
+      <button type="button" data-c="PKR">PKR (Rs)</button>
+    </div>
+
+    <label>Data</label>
+    <div class="settings-row" id="exportBtn">
+      <div>
+        <div class="t">Export backup</div>
+        <div class="s">Save all goals as a JSON file</div>
+      </div>
+      <div class="chev">↗</div>
+    </div>
+    <div class="settings-row" id="importBtn">
+      <div>
+        <div class="t">Import backup</div>
+        <div class="s">Restore from a JSON file</div>
+      </div>
+      <div class="chev">↓</div>
+    </div>
+    <input type="file" id="importInput" accept="application/json,.json" hidden />
+
+    <div class="sheet-actions">
+      <button class="btn btn-primary" id="closeSettingsBtn" type="button" style="flex:1;">Done</button>
+    </div>
+  </div>
+</div>
+
 <script>
+
 (function () {
   const STORAGE_GOALS = 'seeking_goals';
+  const STORAGE_CURRENCY = 'seeking_currency';
+  const NOTIF_CHANNEL_ID = 'seeking_reminders';
   const RING_R = 24; // matches small ring viewBox radius
   const RING_C = 2 * Math.PI * RING_R;
   const BIG_RING_R = 72;
   const BIG_RING_C = 2 * Math.PI * BIG_RING_R;
   const EMOJIS = ['🎯', '💰', '✈️', '🏠', '🚗', '📚', '💪', '🧘'];
+  const CURRENCIES = {
+    USD: { locale: 'en-US', code: 'USD' },
+    EUR: { locale: 'de-DE', code: 'EUR' },
+    GBP: { locale: 'en-GB', code: 'GBP' },
+    PKR: { locale: 'en-PK', code: 'PKR' }
+  };
 
+  const headerEl = document.querySelector('header');
   const homeEl = document.getElementById('home');
   const statsLine = document.getElementById('statsLine');
   const fabAdd = document.getElementById('fabAdd');
+  const openSettingsBtn = document.getElementById('openSettingsBtn');
 
   const detailScreen = document.getElementById('detailScreen');
   const detailBody = document.getElementById('detailBody');
   const backBtn = document.getElementById('backBtn');
+  const editGoalBtn = document.getElementById('editGoalBtn');
   const deleteGoalBtn = document.getElementById('deleteGoalBtn');
 
   const addOverlay = document.getElementById('addOverlay');
+  const goalSheetTitle = document.getElementById('goalSheetTitle');
+  const typeSection = document.getElementById('typeSection');
   const typeSavingsBtn = document.getElementById('typeSavingsBtn');
   const typeStreakBtn = document.getElementById('typeStreakBtn');
   const goalNameInput = document.getElementById('goalNameInput');
+  const goalNameError = document.getElementById('goalNameError');
   const targetField = document.getElementById('targetField');
   const goalTargetInput = document.getElementById('goalTargetInput');
+  const goalTargetError = document.getElementById('goalTargetError');
   const emojiRow = document.getElementById('emojiRow');
   const cancelAddBtn = document.getElementById('cancelAddBtn');
   const saveGoalBtn = document.getElementById('saveGoalBtn');
 
   const logOverlay = document.getElementById('logOverlay');
   const logAmountInput = document.getElementById('logAmountInput');
+  const logAmountError = document.getElementById('logAmountError');
   const logNoteInput = document.getElementById('logNoteInput');
   const cancelLogBtn = document.getElementById('cancelLogBtn');
   const saveLogBtn = document.getElementById('saveLogBtn');
+
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const currencyGrid = document.getElementById('currencyGrid');
+  const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
+  const importInput = document.getElementById('importInput');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
   let goals = JSON.parse(localStorage.getItem(STORAGE_GOALS) || '[]');
   let newGoalType = 'savings';
   let newGoalEmoji = EMOJIS[0];
   let activeGoalId = null;
+  let editingGoalId = null; // null => the add sheet is in "create" mode
 
   function haptic(style) {
     try { window.Capacitor?.Plugins?.Haptics?.impact({ style: style || 'Light' }); } catch (e) {}
@@ -462,21 +576,24 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
-  function todayStr() {
-    return new Date().toISOString().slice(0, 10);
+  // ---------- Local calendar date helpers (avoid UTC/toISOString drift) ----------
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function localDateStr(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   }
-
+  function todayStr() { return localDateStr(new Date()); }
   function daysAgoStr(n) {
     const d = new Date();
     d.setDate(d.getDate() - n);
-    return d.toISOString().slice(0, 10);
+    return localDateStr(d);
   }
+  function parseLocalDate(s) { return new Date(s + 'T00:00:00'); }
 
   function currentStreak(entries) {
     let count = 0;
     let cursor = new Date();
     while (true) {
-      const key = cursor.toISOString().slice(0, 10);
+      const key = localDateStr(cursor);
       if (entries.includes(key)) {
         count++;
         cursor.setDate(cursor.getDate() - 1);
@@ -492,7 +609,7 @@
     let best = 0, run = 0, prev = null;
     for (const d of sorted) {
       if (prev) {
-        const diff = (new Date(d) - new Date(prev)) / 86400000;
+        const diff = (parseLocalDate(d) - parseLocalDate(prev)) / 86400000;
         run = diff === 1 ? run + 1 : 1;
       } else {
         run = 1;
@@ -503,10 +620,88 @@
     return best;
   }
 
+  // ---------- Currency ----------
+  function getCurrency() {
+    return localStorage.getItem(STORAGE_CURRENCY) || 'USD';
+  }
+  function setCurrency(code) {
+    if (!CURRENCIES[code]) code = 'USD';
+    localStorage.setItem(STORAGE_CURRENCY, code);
+  }
+  function formatMoney(amount) {
+    const n = Number(amount) || 0;
+    const meta = CURRENCIES[getCurrency()] || CURRENCIES.USD;
+    try {
+      return new Intl.NumberFormat(meta.locale, {
+        style: 'currency',
+        currency: meta.code,
+        maximumFractionDigits: (n % 1 === 0) ? 0 : 2
+      }).format(n);
+    } catch (e) {
+      return meta.code + ' ' + n.toLocaleString();
+    }
+  }
+  function refreshCurrencyGrid() {
+    const cur = getCurrency();
+    currencyGrid.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.c === cur));
+  }
+  currencyGrid.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      setCurrency(b.dataset.c);
+      refreshCurrencyGrid();
+      renderHome();
+      if (activeGoalId) renderDetail();
+      haptic('Light');
+    });
+  });
+
+  // ---------- Validation ----------
+  function setFieldError(inputEl, errorEl, show) {
+    errorEl.classList.toggle('show', show);
+    inputEl.classList.toggle('invalid', show);
+  }
+  function clearFieldError(inputEl, errorEl) { setFieldError(inputEl, errorEl, false); }
+  function validateGoalName(name) {
+    const t = name.trim();
+    return t.length > 0 && t.length <= 60;
+  }
+  function validatePositiveAmount(val) {
+    const n = parseFloat(val);
+    return Number.isFinite(n) && n > 0;
+  }
+
+  // Normalizes arbitrary/imported goal data into a safe, well-typed shape.
+  function sanitizeGoals(rawList) {
+    if (!Array.isArray(rawList)) return [];
+    return rawList.map(r => {
+      const type = r && r.type === 'streak' ? 'streak' : 'savings';
+      const g = {
+        id: (r && typeof r.id === 'string' && r.id) ? r.id : uid(),
+        type: type,
+        name: (r && typeof r.name === 'string' && r.name.trim()) ? r.name.trim().slice(0, 60) : 'Untitled goal',
+        emoji: (r && typeof r.emoji === 'string' && r.emoji) ? r.emoji : EMOJIS[0],
+        reminderEnabled: !!(r && r.reminderEnabled),
+        reminderTime: (r && typeof r.reminderTime === 'string' && /^\d{2}:\d{2}$/.test(r.reminderTime)) ? r.reminderTime : '09:00',
+        entries: []
+      };
+      if (type === 'savings') {
+        g.entries = (r && Array.isArray(r.entries)) ? r.entries
+          .filter(e => e && typeof e.date === 'string' && Number.isFinite(e.amount) && e.amount > 0)
+          .map(e => ({ date: e.date, amount: e.amount, note: typeof e.note === 'string' ? e.note.slice(0, 80) : '' }))
+          : [];
+        g.target = (r && Number.isFinite(r.target) && r.target > 0) ? r.target : 0;
+        g.current = g.entries.reduce((sum, e) => sum + e.amount, 0);
+      } else {
+        g.entries = (r && Array.isArray(r.entries)) ? r.entries.filter(e => typeof e === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e)) : [];
+      }
+      return g;
+    });
+  }
+
   // ---------- Home rendering ----------
   function renderStats() {
     if (goals.length === 0) { statsLine.textContent = 'No goals yet'; return; }
-    const month = new Date().toISOString().slice(0, 7);
+    const month = todayStr().slice(0, 7);
     let savedThisMonth = 0;
     let best = 0;
     goals.forEach(g => {
@@ -517,7 +712,7 @@
       }
     });
     const parts = [goals.length + ' goal' + (goals.length === 1 ? '' : 's')];
-    if (savedThisMonth > 0) parts.push('$' + savedThisMonth.toLocaleString() + ' saved this month');
+    if (savedThisMonth > 0) parts.push(formatMoney(savedThisMonth) + ' saved this month');
     if (best > 0) parts.push(best + '-day best streak');
     statsLine.textContent = parts.join(' · ');
   }
@@ -556,7 +751,7 @@
         </div>
         <div class="goal-info">
           <div class="name">${escapeHtml(g.name)}</div>
-          <div class="sub"><span class="accent-green num">$${g.current.toLocaleString()}</span> of $${g.target.toLocaleString()}</div>
+          <div class="sub"><span class="accent-green num">${formatMoney(g.current)}</span> of ${formatMoney(g.target)}</div>
         </div>`;
     } else {
       const streak = currentStreak(g.entries);
@@ -618,7 +813,7 @@
             </svg>
             <div class="big-ring-center">
               <div class="pct num">${Math.round(pct * 100)}%</div>
-              <div class="amt num">$${g.current.toLocaleString()} / $${g.target.toLocaleString()}</div>
+              <div class="amt num">${formatMoney(g.current)} / ${formatMoney(g.target)}</div>
             </div>
           </div>
           <button class="action-btn green" id="logBtn">${reached ? '🎉 Add more' : '+ Log contribution'}</button>
@@ -669,13 +864,13 @@
           <div>${e.note ? escapeHtml(e.note) : 'Contribution'}</div>
           <div class="date">${formatDate(e.date)}</div>
         </div>
-        <div class="amt num">+$${e.amount.toLocaleString()}</div>
+        <div class="amt num">+${formatMoney(e.amount)}</div>
       </div>
     `).join('');
   }
 
   function formatDate(d) {
-    const date = new Date(d + 'T00:00:00');
+    const date = parseLocalDate(d);
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
@@ -697,50 +892,108 @@
   function wireReminderRow(g) {
     const toggle = document.getElementById('reminderToggle');
     if (!toggle) return;
-    toggle.addEventListener('change', () => {
+    toggle.addEventListener('change', async () => {
+      toggle.disabled = true;
       g.reminderEnabled = toggle.checked;
       if (!g.reminderTime) g.reminderTime = '09:00';
       saveGoals();
-      scheduleReminder(g);
+      await scheduleReminder(g);
       renderDetail();
       haptic('Light');
     });
     const timeInput = document.getElementById('reminderTime');
     if (timeInput) {
-      timeInput.addEventListener('change', () => {
+      timeInput.addEventListener('change', async () => {
         g.reminderTime = timeInput.value;
         saveGoals();
-        scheduleReminder(g);
-        document.getElementById('reminderSub').textContent = 'Reminding at ' + g.reminderTime;
+        await scheduleReminder(g);
+        const sub = document.getElementById('reminderSub');
+        if (sub) sub.textContent = 'Reminding at ' + g.reminderTime;
       });
     }
   }
 
-  // Schedules (or cancels) a native daily notification if @capacitor/local-notifications
-  // is installed; silently does nothing otherwise (e.g. web preview).
-  function scheduleReminder(g) {
+  // ---------- Notifications ----------
+  // All of this degrades silently (no-op) if @capacitor/local-notifications
+  // isn't installed — e.g. during web preview.
+  async function ensureChannel() {
     try {
       const LN = window.Capacitor?.Plugins?.LocalNotifications;
       if (!LN) return;
-      const notifId = hashId(g.id);
-      LN.cancel({ notifications: [{ id: notifId }] });
-      if (g.reminderEnabled) {
-        const [h, m] = (g.reminderTime || '09:00').split(':').map(Number);
-        LN.schedule({
-          notifications: [{
-            id: notifId,
-            title: 'Seeking',
-            body: g.type === 'savings' ? `Add a contribution to "${g.name}"` : `Keep your "${g.name}" streak alive`,
-            schedule: { on: { hour: h, minute: m }, repeats: true }
-          }]
-        });
-      }
-    } catch (e) { /* no-op */ }
+      await LN.createChannel({
+        id: NOTIF_CHANNEL_ID,
+        name: 'Goal Reminders',
+        description: 'Daily reminders for your goals',
+        importance: 4,
+        visibility: 1
+      });
+    } catch (e) { /* channel likely already exists */ }
   }
+
+  async function ensureNotificationPermission() {
+    try {
+      const LN = window.Capacitor?.Plugins?.LocalNotifications;
+      if (!LN) return false;
+      let status = await LN.checkPermissions();
+      if (status.display !== 'granted') {
+        status = await LN.requestPermissions();
+      }
+      return status.display === 'granted';
+    } catch (e) { return false; }
+  }
+
   function hashId(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
     return h % 1000000;
+  }
+
+  async function cancelReminder(g) {
+    try {
+      const LN = window.Capacitor?.Plugins?.LocalNotifications;
+      if (!LN) return;
+      await LN.cancel({ notifications: [{ id: hashId(g.id) }] });
+    } catch (e) {}
+  }
+
+  async function scheduleReminder(g) {
+    try {
+      const LN = window.Capacitor?.Plugins?.LocalNotifications;
+      if (!LN) return;
+      const notifId = hashId(g.id);
+      await LN.cancel({ notifications: [{ id: notifId }] });
+      if (!g.reminderEnabled) return;
+      await ensureChannel();
+      const granted = await ensureNotificationPermission();
+      if (!granted) {
+        // Permission denied — don't leave the UI claiming a reminder is on.
+        g.reminderEnabled = false;
+        saveGoals();
+        if (activeGoalId === g.id) renderDetail();
+        return;
+      }
+      const [h, m] = (g.reminderTime || '09:00').split(':').map(Number);
+      await LN.schedule({
+        notifications: [{
+          id: notifId,
+          title: 'Seeking',
+          body: g.type === 'savings' ? `Add a contribution to "${g.name}"` : `Keep your "${g.name}" streak alive`,
+          channelId: NOTIF_CHANNEL_ID,
+          schedule: { on: { hour: h, minute: m }, repeats: true }
+        }]
+      });
+    } catch (e) { /* no-op */ }
+  }
+
+  async function rescheduleAllReminders() {
+    try {
+      const LN = window.Capacitor?.Plugins?.LocalNotifications;
+      if (!LN) return;
+      await ensureChannel();
+      for (const g of goals) {
+        if (g.reminderEnabled) await scheduleReminder(g);
+      }
+    } catch (e) {}
   }
 
   function toggleToday(g) {
@@ -753,17 +1006,19 @@
     renderHome();
   }
 
-  deleteGoalBtn.addEventListener('click', () => {
+  deleteGoalBtn.addEventListener('click', async () => {
     const g = getActiveGoal();
     if (!g) return;
     if (!confirm(`Delete "${g.name}"? This can't be undone.`)) return;
+    await cancelReminder(g);
     goals = goals.filter(x => x.id !== g.id);
     saveGoals();
     closeDetail();
     renderHome();
+    haptic('Light');
   });
 
-  // ---------- Add goal sheet ----------
+  // ---------- Add / Edit goal sheet ----------
   emojiRow.innerHTML = EMOJIS.map((e, i) =>
     `<button type="button" data-e="${e}" class="${i === 0 ? 'active' : ''}">${e}</button>`
   ).join('');
@@ -784,58 +1039,116 @@
     targetField.style.display = t === 'savings' ? 'block' : 'none';
   }
 
-  fabAdd.addEventListener('click', () => {
+  function openAddSheet() {
+    editingGoalId = null;
+    goalSheetTitle.textContent = 'New goal';
+    saveGoalBtn.textContent = 'Create goal';
+    typeSection.style.display = 'block';
     goalNameInput.value = '';
     goalTargetInput.value = '';
+    clearFieldError(goalNameInput, goalNameError);
+    clearFieldError(goalTargetInput, goalTargetError);
     setNewGoalType('savings');
     newGoalEmoji = EMOJIS[0];
     emojiRow.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === 0));
     addOverlay.classList.add('show');
+  }
+
+  function openEditSheet(g) {
+    editingGoalId = g.id;
+    newGoalType = g.type;
+    goalSheetTitle.textContent = 'Edit goal';
+    saveGoalBtn.textContent = 'Save changes';
+    typeSection.style.display = 'none'; // type can't change after creation
+    goalNameInput.value = g.name;
+    clearFieldError(goalNameInput, goalNameError);
+    if (g.type === 'savings') {
+      targetField.style.display = 'block';
+      goalTargetInput.value = g.target;
+      clearFieldError(goalTargetInput, goalTargetError);
+    } else {
+      targetField.style.display = 'none';
+    }
+    newGoalEmoji = g.emoji;
+    emojiRow.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.e === g.emoji));
+    addOverlay.classList.add('show');
+  }
+
+  fabAdd.addEventListener('click', openAddSheet);
+  editGoalBtn.addEventListener('click', () => {
+    const g = getActiveGoal();
+    if (g) openEditSheet(g);
   });
+
   cancelAddBtn.addEventListener('click', () => addOverlay.classList.remove('show'));
   addOverlay.addEventListener('click', (e) => { if (e.target === addOverlay) addOverlay.classList.remove('show'); });
 
   saveGoalBtn.addEventListener('click', () => {
-    const name = goalNameInput.value.trim();
-    if (!name) { goalNameInput.focus(); return; }
-    const goal = {
-      id: uid(),
-      type: newGoalType,
-      name: name,
-      emoji: newGoalEmoji,
-      reminderEnabled: false,
-      reminderTime: '09:00'
-    };
+    const name = goalNameInput.value;
+    const nameValid = validateGoalName(name);
+    setFieldError(goalNameInput, goalNameError, !nameValid);
+    if (!nameValid) { goalNameInput.focus(); return; }
+
+    let targetVal = 0;
     if (newGoalType === 'savings') {
-      const target = parseFloat(goalTargetInput.value) || 0;
-      goal.target = target;
-      goal.current = 0;
-      goal.entries = [];
-    } else {
-      goal.entries = [];
+      const targetValid = validatePositiveAmount(goalTargetInput.value);
+      setFieldError(goalTargetInput, goalTargetError, !targetValid);
+      if (!targetValid) { goalTargetInput.focus(); return; }
+      targetVal = parseFloat(goalTargetInput.value);
     }
-    goals.push(goal);
-    saveGoals();
-    addOverlay.classList.remove('show');
-    renderHome();
-    haptic('Medium');
+
+    if (editingGoalId) {
+      const g = goals.find(x => x.id === editingGoalId);
+      if (g) {
+        g.name = name.trim();
+        g.emoji = newGoalEmoji;
+        if (g.type === 'savings') g.target = targetVal;
+      }
+      saveGoals();
+      addOverlay.classList.remove('show');
+      renderHome();
+      if (activeGoalId === editingGoalId) renderDetail();
+      haptic('Medium');
+    } else {
+      const goal = {
+        id: uid(),
+        type: newGoalType,
+        name: name.trim(),
+        emoji: newGoalEmoji,
+        reminderEnabled: false,
+        reminderTime: '09:00',
+        entries: []
+      };
+      if (newGoalType === 'savings') {
+        goal.target = targetVal;
+        goal.current = 0;
+      }
+      goals.push(goal);
+      saveGoals();
+      addOverlay.classList.remove('show');
+      renderHome();
+      haptic('Medium');
+    }
   });
 
   // ---------- Log contribution sheet ----------
   function openLogSheet() {
     logAmountInput.value = '';
     logNoteInput.value = '';
+    clearFieldError(logAmountInput, logAmountError);
     logOverlay.classList.add('show');
   }
   cancelLogBtn.addEventListener('click', () => logOverlay.classList.remove('show'));
   logOverlay.addEventListener('click', (e) => { if (e.target === logOverlay) logOverlay.classList.remove('show'); });
 
   saveLogBtn.addEventListener('click', () => {
+    const valid = validatePositiveAmount(logAmountInput.value);
+    setFieldError(logAmountInput, logAmountError, !valid);
+    if (!valid) { logAmountInput.focus(); return; }
     const amount = parseFloat(logAmountInput.value);
-    if (!amount || amount <= 0) { logAmountInput.focus(); return; }
     const g = getActiveGoal();
     if (!g) return;
-    g.entries.push({ date: todayStr(), amount: amount, note: logNoteInput.value.trim() });
+    g.entries.push({ date: todayStr(), amount: amount, note: logNoteInput.value.trim().slice(0, 80) });
     g.current = g.entries.reduce((sum, e) => sum + e.amount, 0);
     saveGoals();
     logOverlay.classList.remove('show');
@@ -844,8 +1157,133 @@
     haptic('Medium');
   });
 
+  // ---------- Settings sheet (currency + backup/restore) ----------
+  openSettingsBtn.addEventListener('click', () => {
+    refreshCurrencyGrid();
+    settingsOverlay.classList.add('show');
+  });
+  closeSettingsBtn.addEventListener('click', () => settingsOverlay.classList.remove('show'));
+  settingsOverlay.addEventListener('click', (e) => { if (e.target === settingsOverlay) settingsOverlay.classList.remove('show'); });
+
+  exportBtn.addEventListener('click', async () => {
+    try {
+      const payload = {
+        app: 'seeking',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        currency: getCurrency(),
+        goals: goals
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const fileName = 'seeking-backup-' + todayStr() + '.json';
+      const FS = window.Capacitor?.Plugins?.Filesystem;
+      const Share = window.Capacitor?.Plugins?.Share;
+      if (FS) {
+        const result = await FS.writeFile({ path: fileName, data: json, directory: 'CACHE', encoding: 'utf8' });
+        if (Share) {
+          await Share.share({ title: 'Seeking backup', url: result.uri });
+        } else {
+          alert('Backup saved to app cache as ' + fileName);
+        }
+      } else {
+        // Web preview fallback: plain browser download
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+      haptic('Medium');
+    } catch (err) {
+      alert('Export failed: ' + err.message);
+    }
+  });
+
+  importBtn.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || !Array.isArray(parsed.goals)) throw new Error("This file doesn't look like a Seeking backup.");
+      const cleaned = sanitizeGoals(parsed.goals);
+      if (!confirm(`Restore ${cleaned.length} goal(s)? This replaces your current goals.`)) { importInput.value = ''; return; }
+      for (const g of goals) await cancelReminder(g);
+      goals = cleaned;
+      if (parsed.currency && CURRENCIES[parsed.currency]) setCurrency(parsed.currency);
+      saveGoals();
+      renderHome();
+      refreshCurrencyGrid();
+      await rescheduleAllReminders();
+      haptic('Medium');
+    } catch (err) {
+      alert('Could not import backup: ' + err.message);
+    }
+    importInput.value = '';
+  });
+
+  // ---------- Android hardware back button ----------
+  // Closes the topmost sheet/detail screen instead of exiting the app immediately.
+  function closeTopOverlay() {
+    const overlays = [addOverlay, logOverlay, settingsOverlay];
+    for (const ov of overlays) {
+      if (ov.classList.contains('show')) {
+        ov.classList.remove('show');
+        return true;
+      }
+    }
+    return false;
+  }
+  function initBackButton() {
+    try {
+      const AppPlugin = window.Capacitor?.Plugins?.App;
+      if (!AppPlugin) return;
+      AppPlugin.addListener('backButton', () => {
+        if (closeTopOverlay()) return;
+        if (detailScreen.classList.contains('show')) { closeDetail(); return; }
+        AppPlugin.minimizeApp();
+      });
+    } catch (e) { /* no-op */ }
+  }
+
+  // ---------- Native UI polish: status bar + keyboard ----------
+  async function initNativeUI() {
+    try {
+      const SB = window.Capacitor?.Plugins?.StatusBar;
+      if (SB) {
+        await SB.setOverlaysWebView({ overlay: true });
+        await SB.setStyle({ style: 'DARK' }); // light status bar icons for our dark background
+      }
+    } catch (e) { /* no-op */ }
+
+    try {
+      const KB = window.Capacitor?.Plugins?.Keyboard;
+      if (KB) {
+        KB.addListener('keyboardWillShow', (info) => {
+          const height = (info && info.keyboardHeight) || 280;
+          document.querySelectorAll('.overlay.show .sheet').forEach(s => {
+            s.style.paddingBottom = (height + 16) + 'px';
+          });
+        });
+        KB.addListener('keyboardWillHide', () => {
+          document.querySelectorAll('.sheet').forEach(s => { s.style.paddingBottom = ''; });
+        });
+      }
+    } catch (e) { /* no-op */ }
+  }
+
   // ---------- Boot ----------
+  goals = sanitizeGoals(goals);
+  saveGoals();
   renderHome();
+  initBackButton();
+  initNativeUI();
+  rescheduleAllReminders();
   if (window.Capacitor) console.log('Seeking running natively on Android');
 })();
 </script>
