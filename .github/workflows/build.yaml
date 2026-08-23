@@ -23,7 +23,6 @@ jobs:
         with:
           node-version: '22'
 
-      # Create lock file, then install
       - name: Generate package-lock.json
         run: npm install --package-lock-only
 
@@ -45,7 +44,7 @@ jobs:
 
       - name: Create MainActivity.java
         run: |
-          cat > android/app/src/main/java/com/shade/seeking/MainActivity.java << 'EOF'
+          cat > android/app/src/main/java/com/shade/seeking/MainActivity.java << 'JAVAEOF'
           package com.shade.seeking;
           import com.getcapacitor.BridgeActivity;
           import com.shade.seeking.plugin.HttpServerPlugin;
@@ -56,16 +55,16 @@ jobs:
                   registerPlugin(HttpServerPlugin.class);
               }
           }
-          EOF
+          JAVAEOF
 
-      # ---- Add NanoHTTPD dependency ----
+      # ---- Add NanoHTTPD dependency (append new block, avoids wrong-block sed issue) ----
       - name: Add NanoHTTPD to build.gradle
         run: |
-          sed -i '/dependencies {/a \    implementation '\''org.nanohttpd:nanohttpd:2.3.1'\''' android/app/build.gradle
+          echo "" >> android/app/build.gradle
+          echo "dependencies { implementation 'org.nanohttpd:nanohttpd:2.3.1' }" >> android/app/build.gradle
 
-      # ---- Verify modification ----
-      - name: Show dependencies section
-        run: cat android/app/build.gradle | grep -A 5 dependencies
+      - name: Show build.gradle tail
+        run: tail -10 android/app/build.gradle
 
       - name: Sync Capacitor
         run: npx cap sync android
