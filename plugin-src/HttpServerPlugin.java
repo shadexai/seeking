@@ -1,0 +1,1 @@
+com.seeking.app.plugin
