@@ -18,14 +18,17 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Node.js (LTS)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+
+      # Create lock file, then install
+      - name: Generate package-lock.json
+        run: npm install --package-lock-only
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install Capacitor CLI
         run: npm install -g @capacitor/cli
@@ -56,20 +59,13 @@ jobs:
           EOF
 
       # ---- Add NanoHTTPD dependency ----
-      - name: Add NanoHTTPD to build.gradle (reliable)
+      - name: Add NanoHTTPD to build.gradle
         run: |
-          # Use awk to insert after the 'dependencies {' line
-          awk '/dependencies {/ { print; print "    implementation '\''org.nanohttpd:nanohttpd:2.3.1'\''"; next }1' android/app/build.gradle > tmp && mv tmp android/app/build.gradle
+          sed -i '/dependencies {/a \    implementation '\''org.nanohttpd:nanohttpd:2.3.1'\''' android/app/build.gradle
 
-      - name: Verify build.gradle (debug)
+      # ---- Verify modification ----
+      - name: Show dependencies section
         run: cat android/app/build.gradle | grep -A 5 dependencies
-
-      # ---- Ensure Internet permission ----
-      - name: Ensure INTERNET permission
-        run: |
-          if ! grep -q "android.permission.INTERNET" android/app/src/main/AndroidManifest.xml; then
-            sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
-          fi
 
       - name: Sync Capacitor
         run: npx cap sync android
@@ -78,7 +74,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace   # show full error
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
