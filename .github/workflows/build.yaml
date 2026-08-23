@@ -1,27 +1,71 @@
-name: Build APK
-on: [push]
+name: Build Debug APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Java
-        uses: actions/setup-java@v5   # Updated to v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
+          distribution: 'zulu'
           java-version: '17'
-          distribution: 'zulu'        # Added required distribution
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Install Dependencies
-        run: npm install
-      - name: Add Android Platform
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
+
+      - name: Add Android platform
         run: npx cap add android
-      - name: Sync and Copy
-        run: npx cap sync
-      - name: Build the APK
-        run: cd android && ./gradlew assembleDebug
+
+      - name: Inject custom plugin source
+        run: |
+          mkdir -p android/app/src/main/java/com/shade/seeking/plugin
+          cp plugin-src/HttpServerPlugin.java android/app/src/main/java/com/shade/seeking/plugin/
+
+          # Create MainActivity that registers the plugin
+          cat > android/app/src/main/java/com/shade/seeking/MainActivity.java << 'EOF'
+          package com.shade.seeking;
+          import com.getcapacitor.BridgeActivity;
+          import com.shade.seeking.plugin.HttpServerPlugin;
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(android.os.Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  registerPlugin(HttpServerPlugin.class);
+              }
+          }
+          EOF
+
+      - name: Add NanoHTTPD dependency to build.gradle
+        run: |
+          sed -i '/dependencies {/a \    implementation '\''org.nanohttpd:nanohttpd:2.3.1'\''' android/app/build.gradle
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: seeking-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
