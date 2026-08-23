@@ -57,24 +57,20 @@ jobs:
           }
           JAVAEOF
 
-      # ---- Sync FIRST, THEN modify build.gradle and download JAR ----
+      # ---- Sync FIRST so it doesn't overwrite our changes ----
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Download NanoHTTPD JAR into libs
+      # ---- The Capacitor template already has mavenCentral() in allprojects
+      #      and fileTree(libs) in dependencies. We just need to add nanohttpd
+      #      to the existing dependencies block using a precise sed target ----
+      - name: Add NanoHTTPD to existing dependencies block
         run: |
-          mkdir -p android/app/libs
-          curl -L -o android/app/libs/nanohttpd-2.3.1.jar \
-            "https://repo1.maven.org/maven2/org/nanohttpd/nanohttpd/2.3.1/nanohttpd-2.3.1.jar"
-          echo "JAR size: $(wc -c < android/app/libs/nanohttpd-2.3.1.jar) bytes"
+          # Target the specific line that already exists in the template
+          sed -i "s|implementation fileTree(include: \['\*.jar'\], dir: 'libs')|implementation fileTree(include: ['*.jar'], dir: 'libs')\n    implementation 'org.nanohttpd:nanohttpd:2.3.1'|" android/app/build.gradle
 
-      - name: Add libs fileTree dependency to build.gradle
-        run: |
-          echo "" >> android/app/build.gradle
-          echo "dependencies { implementation fileTree(dir: 'libs', include: ['*.jar']) }" >> android/app/build.gradle
-
-      - name: Confirm build.gradle tail
-        run: tail -5 android/app/build.gradle
+      - name: Confirm injection
+        run: grep -A 3 "fileTree" android/app/build.gradle
 
       - name: Build Debug APK
         run: |
