@@ -60,24 +60,39 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # ---- Inject NanoHTTPD using Python to avoid all shell quoting issues ----
-      - name: Add NanoHTTPD dependency
+      # ---- Inject NanoHTTPD dependency + mavenCentral into app repositories ----
+      - name: Patch build.gradle
         run: |
           python3 - << 'PYEOF'
           path = 'android/app/build.gradle'
-          old = "implementation fileTree(include: ['*.jar'], dir: 'libs')"
-          new = old + "\n    implementation 'org.nanohttpd:nanohttpd:2.3.1'"
           with open(path, 'r') as f:
               content = f.read()
-          if old not in content:
-              raise Exception("Target line not found in build.gradle!\n" + content)
+
+          # 1. Add nanohttpd to dependencies
+          dep_old = "implementation fileTree(include: ['*.jar'], dir: 'libs')"
+          dep_new = dep_old + "\n    implementation 'org.nanohttpd:nanohttpd:2.3.1'"
+          if dep_old not in content:
+              raise Exception("dependencies line not found:\n" + content)
+          content = content.replace(dep_old, dep_new, 1)
+
+          # 2. Add mavenCentral() to the app-level repositories block
+          repo_old = "repositories {\n    flatDir{"
+          repo_new = "repositories {\n    mavenCentral()\n    flatDir{"
+          if repo_old not in content:
+              raise Exception("repositories block not found:\n" + content)
+          content = content.replace(repo_old, repo_new, 1)
+
           with open(path, 'w') as f:
-              f.write(content.replace(old, new, 1))
-          print("SUCCESS: NanoHTTPD injected")
+              f.write(content)
+          print("SUCCESS: patched build.gradle")
           PYEOF
 
-      - name: Confirm injection
-        run: grep -A 2 "fileTree" android/app/build.gradle
+      - name: Confirm patch
+        run: |
+          echo "=== repositories ==="
+          grep -A 4 "^repositories" android/app/build.gradle
+          echo "=== dependencies ==="
+          grep -A 3 "fileTree" android/app/build.gradle
 
       - name: Build Debug APK
         run: |
