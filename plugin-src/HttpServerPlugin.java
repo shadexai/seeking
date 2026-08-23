@@ -12,19 +12,18 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import org.nanohttpd.protocols.http.IHTTPSession;
-import org.nanohttpd.protocols.http.NanoHTTPD;
-import org.nanohttpd.protocols.http.response.Response;
-import org.nanohttpd.protocols.http.response.Status;
-
+import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.SocketException;
 import java.util.Enumeration;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -34,10 +33,10 @@ public class HttpServerPlugin extends Plugin {
     private static final String TAG = "HttpServerPlugin";
     private static final int REQUEST_CODE_PICK_FILE = 1001;
 
-    private ExecutorService serverExecutor;
-    private HttpServer server;
+    private ServerSocket serverSocket;
+    private ExecutorService executor;
     private Uri selectedFileUri;
-    private String localIpAddress;
+    private volatile boolean running = false;
 
     @PluginMethod
     public void pickFile(PluginCall call) {
@@ -50,7 +49,7 @@ public class HttpServerPlugin extends Plugin {
 
     @PluginMethod
     public void startServer(PluginCall call) {
-        if (server != null) {
+        if (running) {
             call.reject("Server already running");
             return;
         }
@@ -60,54 +59,143 @@ public class HttpServerPlugin extends Plugin {
             call.reject("Missing fileUri");
             return;
         }
-
         selectedFileUri = Uri.parse(fileUriStr);
-        if (selectedFileUri == null) {
-            call.reject("Invalid file URI");
-            return;
-        }
 
-        localIpAddress = getLocalIpAddress();
-        if (localIpAddress == null) {
+        String ip = getLocalIpAddress();
+        if (ip == null) {
             call.reject("Could not determine local IP address");
             return;
         }
 
-        serverExecutor = Executors.newSingleThreadExecutor();
-        serverExecutor.execute(() -> {
-            try {
-                server = new HttpServer(port, selectedFileUri, getContext());
-                server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
-                JSObject result = new JSObject();
-                result.put("ip", localIpAddress);
-                result.put("port", port);
-                call.resolve(result);
-            } catch (IOException e) {
-                Log.e(TAG, "Server start failed", e);
-                call.reject("Server start failed: " + e.getMessage());
-                stopServerInternal();
-            }
-        });
+        try {
+            serverSocket = new ServerSocket(port);
+            running = true;
+            executor = Executors.newCachedThreadPool();
+
+            executor.execute(() -> {
+                while (running) {
+                    try {
+                        Socket client = serverSocket.accept();
+                        executor.execute(() -> handleClient(client));
+                    } catch (IOException e) {
+                        if (running) Log.e(TAG, "Accept error", e);
+                    }
+                }
+            });
+
+            JSObject result = new JSObject();
+            result.put("ip", ip);
+            result.put("port", port);
+            call.resolve(result);
+
+        } catch (IOException e) {
+            call.reject("Server start failed: " + e.getMessage());
+        }
     }
 
     @PluginMethod
     public void stopServer(PluginCall call) {
-        if (server == null) {
-            call.reject("Server not running");
-            return;
-        }
         stopServerInternal();
         call.resolve();
     }
 
     private void stopServerInternal() {
-        if (server != null) {
-            server.stop();
-            server = null;
+        running = false;
+        if (serverSocket != null) {
+            try { serverSocket.close(); } catch (IOException ignored) {}
+            serverSocket = null;
         }
-        if (serverExecutor != null) {
-            serverExecutor.shutdownNow();
-            serverExecutor = null;
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
+        }
+    }
+
+    private void handleClient(Socket client) {
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(client.getInputStream()));
+            OutputStream out = client.getOutputStream();
+
+            // Read request line
+            String requestLine = reader.readLine();
+            if (requestLine == null) { client.close(); return; }
+            Log.d(TAG, "Request: " + requestLine);
+
+            // Read headers
+            long rangeStart = -1;
+            long rangeEnd = -1;
+            String line;
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+                if (line.toLowerCase().startsWith("range: bytes=")) {
+                    String range = line.substring(13).trim();
+                    int dash = range.indexOf('-');
+                    try {
+                        if (dash > 0) {
+                            rangeStart = Long.parseLong(range.substring(0, dash).trim());
+                            String endStr = range.substring(dash + 1).trim();
+                            if (!endStr.isEmpty()) rangeEnd = Long.parseLong(endStr);
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            // Only handle GET
+            if (!requestLine.startsWith("GET")) {
+                out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes());
+                client.close();
+                return;
+            }
+
+            ParcelFileDescriptor pfd = getContext().getContentResolver()
+                    .openFileDescriptor(selectedFileUri, "r");
+            if (pfd == null) {
+                out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
+                client.close();
+                return;
+            }
+
+            long fileSize = pfd.getStatSize();
+            long start = (rangeStart >= 0) ? rangeStart : 0;
+            long end = (rangeEnd >= 0) ? rangeEnd : fileSize - 1;
+            if (end >= fileSize) end = fileSize - 1;
+            long contentLength = end - start + 1;
+            boolean isRange = rangeStart >= 0;
+
+            StringBuilder headers = new StringBuilder();
+            if (isRange) {
+                headers.append("HTTP/1.1 206 Partial Content\r\n");
+                headers.append("Content-Range: bytes ").append(start).append("-").append(end)
+                        .append("/").append(fileSize).append("\r\n");
+            } else {
+                headers.append("HTTP/1.1 200 OK\r\n");
+            }
+            headers.append("Content-Type: video/mp4\r\n");
+            headers.append("Content-Length: ").append(contentLength).append("\r\n");
+            headers.append("Accept-Ranges: bytes\r\n");
+            headers.append("Cache-Control: no-cache\r\n");
+            headers.append("Connection: close\r\n");
+            headers.append("\r\n");
+            out.write(headers.toString().getBytes());
+
+            FileInputStream fis = new FileInputStream(pfd.getFileDescriptor());
+            if (start > 0) fis.skip(start);
+
+            byte[] buf = new byte[65536];
+            long remaining = contentLength;
+            int read;
+            while (remaining > 0 &&
+                    (read = fis.read(buf, 0, (int) Math.min(buf.length, remaining))) != -1) {
+                out.write(buf, 0, read);
+                remaining -= read;
+            }
+            out.flush();
+            fis.close();
+            pfd.close();
+            client.close();
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error handling client", e);
+            try { client.close(); } catch (IOException ignored) {}
         }
     }
 
@@ -118,9 +206,7 @@ public class HttpServerPlugin extends Plugin {
             if (data != null && data.getData() != null) {
                 Uri uri = data.getData();
                 getContext().getContentResolver().takePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                );
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 String fileName = getFileNameFromUri(uri);
                 JSObject result = new JSObject();
                 result.put("uri", uri.toString());
@@ -135,20 +221,17 @@ public class HttpServerPlugin extends Plugin {
     private String getFileNameFromUri(Uri uri) {
         String name = null;
         if ("content".equals(uri.getScheme())) {
-            try (android.database.Cursor cursor = getContext().getContentResolver().query(uri, null, null, null, null)) {
+            try (android.database.Cursor cursor = getContext().getContentResolver()
+                    .query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
-                    int nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
-                    if (nameIndex != -1) {
-                        name = cursor.getString(nameIndex);
-                    }
+                    int idx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+                    if (idx != -1) name = cursor.getString(idx);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error getting file name", e);
             }
         }
-        if (name == null) {
-            name = uri.getLastPathSegment();
-        }
+        if (name == null) name = uri.getLastPathSegment();
         return name != null ? name : "video.mp4";
     }
 
@@ -166,121 +249,8 @@ public class HttpServerPlugin extends Plugin {
                 }
             }
         } catch (SocketException e) {
-            Log.e(TAG, "Wi-Fi IP error", e);
+            Log.e(TAG, "IP error", e);
         }
         return null;
-    }
-
-    private static class HttpServer extends NanoHTTPD {
-        private final Uri fileUri;
-        private final android.content.Context context;
-
-        public HttpServer(int port, Uri fileUri, android.content.Context context) {
-            super(port);
-            this.fileUri = fileUri;
-            this.context = context;
-        }
-
-        @Override
-        public Response serve(IHTTPSession session) {
-            Map<String, String> headers = session.getHeaders();
-
-            if (!"GET".equalsIgnoreCase(session.getMethod().toString())) {
-                return Response.newFixedLengthResponse(Status.METHOD_NOT_ALLOWED, "text/plain", "Method not allowed");
-            }
-
-            try {
-                ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(fileUri, "r");
-                if (pfd == null) {
-                    return Response.newFixedLengthResponse(Status.NOT_FOUND, "text/plain", "File not found");
-                }
-                long fileSize = pfd.getStatSize();
-
-                String rangeHeader = headers.get("range");
-                long start = 0;
-                long end = fileSize - 1;
-                boolean hasRange = false;
-
-                if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-                    hasRange = true;
-                    String range = rangeHeader.substring(6);
-                    int dash = range.indexOf('-');
-                    try {
-                        if (dash > 0) {
-                            start = Long.parseLong(range.substring(0, dash));
-                            if (dash < range.length() - 1) {
-                                end = Long.parseLong(range.substring(dash + 1));
-                            } else {
-                                end = fileSize - 1;
-                            }
-                        } else {
-                            long suffix = Long.parseLong(range);
-                            start = fileSize - suffix;
-                            end = fileSize - 1;
-                        }
-                    } catch (NumberFormatException e) {
-                        // ignore, use defaults
-                    }
-                }
-
-                if (start < 0) start = 0;
-                if (end >= fileSize) end = fileSize - 1;
-                if (start > end) {
-                    start = 0;
-                    end = fileSize - 1;
-                }
-
-                final long contentLength = end - start + 1;
-                final long skipBytes = start;
-
-                // Use FileInputStream instead of RandomAccessFile — works with ParcelFileDescriptor
-                final FileInputStream fis = new FileInputStream(pfd.getFileDescriptor());
-                fis.skip(skipBytes);
-
-                InputStream inputStream = new InputStream() {
-                    private long remaining = contentLength;
-
-                    @Override
-                    public int read() throws IOException {
-                        if (remaining <= 0) return -1;
-                        int b = fis.read();
-                        if (b != -1) remaining--;
-                        return b;
-                    }
-
-                    @Override
-                    public int read(byte[] b, int off, int len) throws IOException {
-                        if (remaining <= 0) return -1;
-                        int toRead = (int) Math.min(len, remaining);
-                        int read = fis.read(b, off, toRead);
-                        if (read > 0) remaining -= read;
-                        return read;
-                    }
-
-                    @Override
-                    public void close() throws IOException {
-                        fis.close();
-                        pfd.close();
-                    }
-                };
-
-                Response response;
-                if (hasRange) {
-                    response = Response.newFixedLengthResponse(Status.PARTIAL_CONTENT, "video/mp4", inputStream, contentLength);
-                    response.addHeader("Content-Range", "bytes " + start + "-" + end + "/" + fileSize);
-                } else {
-                    response = Response.newFixedLengthResponse(Status.OK, "video/mp4", inputStream, fileSize);
-                }
-                response.addHeader("Accept-Ranges", "bytes");
-                response.addHeader("Content-Type", "video/mp4");
-                response.addHeader("Content-Length", String.valueOf(contentLength));
-                response.addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-                return response;
-
-            } catch (Exception e) {
-                Log.e(TAG, "Error serving file", e);
-                return Response.newFixedLengthResponse(Status.INTERNAL_ERROR, "text/plain", "Server error: " + e.getMessage());
-            }
-        }
     }
 }
