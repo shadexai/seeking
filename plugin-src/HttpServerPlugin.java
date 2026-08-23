@@ -15,7 +15,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
@@ -37,9 +36,12 @@ public class HttpServerPlugin extends Plugin {
     private ExecutorService executor;
     private Uri selectedFileUri;
     private volatile boolean running = false;
+    private PluginCall savedPickCall; // manual save instead of getSavedCall()
 
     @PluginMethod
     public void pickFile(PluginCall call) {
+        saveCall(call); // Capacitor 6 way
+        savedPickCall = call;
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("video/*");
@@ -116,12 +118,10 @@ public class HttpServerPlugin extends Plugin {
             BufferedReader reader = new BufferedReader(new InputStreamReader(client.getInputStream()));
             OutputStream out = client.getOutputStream();
 
-            // Read request line
             String requestLine = reader.readLine();
             if (requestLine == null) { client.close(); return; }
             Log.d(TAG, "Request: " + requestLine);
 
-            // Read headers
             long rangeStart = -1;
             long rangeEnd = -1;
             String line;
@@ -139,7 +139,6 @@ public class HttpServerPlugin extends Plugin {
                 }
             }
 
-            // Only handle GET
             if (!requestLine.startsWith("GET")) {
                 out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes());
                 client.close();
@@ -164,8 +163,8 @@ public class HttpServerPlugin extends Plugin {
             StringBuilder headers = new StringBuilder();
             if (isRange) {
                 headers.append("HTTP/1.1 206 Partial Content\r\n");
-                headers.append("Content-Range: bytes ").append(start).append("-").append(end)
-                        .append("/").append(fileSize).append("\r\n");
+                headers.append("Content-Range: bytes ").append(start).append("-")
+                        .append(end).append("/").append(fileSize).append("\r\n");
             } else {
                 headers.append("HTTP/1.1 200 OK\r\n");
             }
@@ -202,20 +201,27 @@ public class HttpServerPlugin extends Plugin {
     @Override
     protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
         super.handleOnActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE_PICK_FILE && resultCode == android.app.Activity.RESULT_OK) {
-            if (data != null && data.getData() != null) {
-                Uri uri = data.getData();
-                getContext().getContentResolver().takePersistableUriPermission(
-                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                String fileName = getFileNameFromUri(uri);
-                JSObject result = new JSObject();
-                result.put("uri", uri.toString());
-                result.put("name", fileName);
-                getSavedCall().resolve(result);
-            } else {
-                getSavedCall().reject("No file selected");
-            }
+        if (requestCode != REQUEST_CODE_PICK_FILE) return;
+
+        PluginCall call = savedPickCall;
+        if (call == null) {
+            Log.e(TAG, "savedPickCall is null");
+            return;
         }
+
+        if (resultCode == android.app.Activity.RESULT_OK && data != null && data.getData() != null) {
+            Uri uri = data.getData();
+            getContext().getContentResolver().takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            String fileName = getFileNameFromUri(uri);
+            JSObject result = new JSObject();
+            result.put("uri", uri.toString());
+            result.put("name", fileName);
+            call.resolve(result);
+        } else {
+            call.reject("No file selected");
+        }
+        savedPickCall = null;
     }
 
     private String getFileNameFromUri(Uri uri) {
