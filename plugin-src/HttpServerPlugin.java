@@ -2,12 +2,9 @@ package com.shade.seeking.plugin;
 
 import android.content.Intent;
 import android.net.Uri;
-import android.net.wifi.WifiManager;
 import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
 import android.util.Log;
-
-import androidx.annotation.NonNull;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -20,16 +17,13 @@ import org.nanohttpd.protocols.http.NanoHTTPD;
 import org.nanohttpd.protocols.http.response.Response;
 import org.nanohttpd.protocols.http.response.Status;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,7 +37,6 @@ public class HttpServerPlugin extends Plugin {
     private ExecutorService serverExecutor;
     private HttpServer server;
     private Uri selectedFileUri;
-    private String selectedFileName;
     private String localIpAddress;
 
     @PluginMethod
@@ -74,7 +67,6 @@ public class HttpServerPlugin extends Plugin {
             return;
         }
 
-        selectedFileName = getFileNameFromUri(selectedFileUri);
         localIpAddress = getLocalIpAddress();
         if (localIpAddress == null) {
             call.reject("Could not determine local IP address");
@@ -142,7 +134,7 @@ public class HttpServerPlugin extends Plugin {
 
     private String getFileNameFromUri(Uri uri) {
         String name = null;
-        if (uri.getScheme().equals("content")) {
+        if ("content".equals(uri.getScheme())) {
             try (android.database.Cursor cursor = getContext().getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
@@ -191,7 +183,6 @@ public class HttpServerPlugin extends Plugin {
 
         @Override
         public Response serve(IHTTPSession session) {
-            String uri = session.getUri();
             Map<String, String> headers = session.getHeaders();
 
             if (!"GET".equalsIgnoreCase(session.getMethod().toString())) {
@@ -228,7 +219,7 @@ public class HttpServerPlugin extends Plugin {
                             end = fileSize - 1;
                         }
                     } catch (NumberFormatException e) {
-                        // ignore
+                        // ignore, use defaults
                     }
                 }
 
@@ -239,31 +230,36 @@ public class HttpServerPlugin extends Plugin {
                     end = fileSize - 1;
                 }
 
-                long contentLength = end - start + 1;
+                final long contentLength = end - start + 1;
+                final long skipBytes = start;
 
-                final RandomAccessFile raf = new RandomAccessFile(pfd.getFileDescriptor(), "r");
-                raf.seek(start);
+                // Use FileInputStream instead of RandomAccessFile — works with ParcelFileDescriptor
+                final FileInputStream fis = new FileInputStream(pfd.getFileDescriptor());
+                fis.skip(skipBytes);
 
                 InputStream inputStream = new InputStream() {
                     private long remaining = contentLength;
+
                     @Override
                     public int read() throws IOException {
                         if (remaining <= 0) return -1;
-                        int b = raf.read();
+                        int b = fis.read();
                         if (b != -1) remaining--;
                         return b;
                     }
+
                     @Override
                     public int read(byte[] b, int off, int len) throws IOException {
                         if (remaining <= 0) return -1;
                         int toRead = (int) Math.min(len, remaining);
-                        int read = raf.read(b, off, toRead);
+                        int read = fis.read(b, off, toRead);
                         if (read > 0) remaining -= read;
                         return read;
                     }
+
                     @Override
                     public void close() throws IOException {
-                        raf.close();
+                        fis.close();
                         pfd.close();
                     }
                 };
