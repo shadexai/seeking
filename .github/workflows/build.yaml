@@ -35,22 +35,6 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      # ---- Download NanoHTTPD JAR directly from Maven Central ----
-      - name: Download NanoHTTPD JAR
-        run: |
-          mkdir -p android/app/libs
-          curl -L -o android/app/libs/nanohttpd-2.3.1.jar \
-            "https://repo1.maven.org/maven2/org/nanohttpd/nanohttpd/2.3.1/nanohttpd-2.3.1.jar"
-
-      # ---- Add libs dir as dependency in build.gradle ----
-      - name: Add libs dependency to build.gradle
-        run: |
-          echo "" >> android/app/build.gradle
-          echo "dependencies { implementation fileTree(dir: 'libs', include: ['*.jar']) }" >> android/app/build.gradle
-
-      - name: Show build.gradle tail
-        run: tail -10 android/app/build.gradle
-
       # ---- Inject plugin ----
       - name: Create plugin package dir
         run: mkdir -p android/app/src/main/java/com/shade/seeking/plugin
@@ -73,8 +57,24 @@ jobs:
           }
           JAVAEOF
 
+      # ---- Sync FIRST, THEN modify build.gradle and download JAR ----
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Download NanoHTTPD JAR into libs
+        run: |
+          mkdir -p android/app/libs
+          curl -L -o android/app/libs/nanohttpd-2.3.1.jar \
+            "https://repo1.maven.org/maven2/org/nanohttpd/nanohttpd/2.3.1/nanohttpd-2.3.1.jar"
+          echo "JAR size: $(wc -c < android/app/libs/nanohttpd-2.3.1.jar) bytes"
+
+      - name: Add libs fileTree dependency to build.gradle
+        run: |
+          echo "" >> android/app/build.gradle
+          echo "dependencies { implementation fileTree(dir: 'libs', include: ['*.jar']) }" >> android/app/build.gradle
+
+      - name: Confirm build.gradle tail
+        run: tail -5 android/app/build.gradle
 
       - name: Build Debug APK
         run: |
