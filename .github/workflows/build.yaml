@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,24 +21,27 @@ jobs:
       - name: Setup Node.js (LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: '22'           # Use Node 22 to avoid deprecation warning
+          node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies (generates package-lock.json)
-        run: npm install               # Creates lock file automatically
+      - name: Install dependencies
+        run: npm install
 
-      - name: Install Capacitor CLI globally
+      - name: Install Capacitor CLI
         run: npm install -g @capacitor/cli
 
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Inject custom plugin source
-        run: |
-          mkdir -p android/app/src/main/java/com/shade/seeking/plugin
-          cp plugin-src/HttpServerPlugin.java android/app/src/main/java/com/shade/seeking/plugin/
+      # ---- Inject plugin ----
+      - name: Create plugin package dir
+        run: mkdir -p android/app/src/main/java/com/shade/seeking/plugin
 
-          # Create MainActivity that registers the plugin
+      - name: Copy HttpServerPlugin.java
+        run: cp plugin-src/HttpServerPlugin.java android/app/src/main/java/com/shade/seeking/plugin/
+
+      - name: Create MainActivity.java
+        run: |
           cat > android/app/src/main/java/com/shade/seeking/MainActivity.java << 'EOF'
           package com.shade.seeking;
           import com.getcapacitor.BridgeActivity;
@@ -51,9 +55,21 @@ jobs:
           }
           EOF
 
-      - name: Add NanoHTTPD dependency to build.gradle
+      # ---- Add NanoHTTPD dependency ----
+      - name: Add NanoHTTPD to build.gradle (reliable)
         run: |
-          sed -i '/dependencies {/a \    implementation '\''org.nanohttpd:nanohttpd:2.3.1'\''' android/app/build.gradle
+          # Use awk to insert after the 'dependencies {' line
+          awk '/dependencies {/ { print; print "    implementation '\''org.nanohttpd:nanohttpd:2.3.1'\''"; next }1' android/app/build.gradle > tmp && mv tmp android/app/build.gradle
+
+      - name: Verify build.gradle (debug)
+        run: cat android/app/build.gradle | grep -A 5 dependencies
+
+      # ---- Ensure Internet permission ----
+      - name: Ensure INTERNET permission
+        run: |
+          if ! grep -q "android.permission.INTERNET" android/app/src/main/AndroidManifest.xml; then
+            sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+          fi
 
       - name: Sync Capacitor
         run: npx cap sync android
@@ -62,7 +78,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace   # show full error
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
