@@ -48,28 +48,10 @@
     <div id="qrcode"></div>
     <button id="stopBtn">⏹ Stop Server</button>
   </div>
-  <div id="status"></div>
+  <div id="status">Initializing...</div>
 </div>
-
-<!-- QRCode library from CDN (no extra file) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
 <script>
-  // ---- Capacitor plugin wrapper (inline) ----
-  const { registerPlugin } = window.Capacitor || { registerPlugin: () => {} };
-  const LocalStreamPlugin = registerPlugin('LocalStream', {
-    pickFile: () => new Promise((resolve, reject) => {
-      window.LocalStream?.pickFile(resolve, reject);
-    }),
-    startServer: (opts) => new Promise((resolve, reject) => {
-      window.LocalStream?.startServer(opts, resolve, reject);
-    }),
-    stopServer: () => new Promise((resolve, reject) => {
-      window.LocalStream?.stopServer(resolve, reject);
-    })
-  });
-
-  // ---- App logic ----
   const pickBtn = document.getElementById('pickBtn');
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
@@ -82,16 +64,34 @@
 
   let selectedUri = null;
   let serverRunning = false;
+  let LocalStream = null;
 
   function setStatus(msg, isError = false) {
     statusDiv.textContent = msg;
     statusDiv.style.color = isError ? '#f87171' : '#bbb';
   }
 
+  function initPlugin() {
+    if (window.Capacitor && window.Capacitor.registerPlugin) {
+      LocalStream = window.Capacitor.registerPlugin('LocalStream');
+      setStatus('Ready.');
+    } else {
+      setStatus('Capacitor not available', true);
+    }
+  }
+
+  // Capacitor fires this event when the bridge is ready
+  window.addEventListener('capacitorReady', initPlugin);
+  // Fallback in case it already fired
+  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
+    initPlugin();
+  }
+
   pickBtn.addEventListener('click', async () => {
+    if (!LocalStream) { setStatus('Plugin not ready', true); return; }
     try {
       setStatus('Opening file picker...');
-      const result = await LocalStreamPlugin.pickFile();
+      const result = await LocalStream.pickFile();
       if (result && result.uri) {
         selectedUri = result.uri;
         fileName.textContent = result.name || 'Selected video';
@@ -103,16 +103,17 @@
       }
     } catch (err) {
       console.error(err);
-      setStatus('Error picking file: ' + err.message, true);
+      setStatus('Error: ' + (err.message || JSON.stringify(err)), true);
     }
   });
 
   startBtn.addEventListener('click', async () => {
+    if (!LocalStream) { setStatus('Plugin not ready', true); return; }
     if (!selectedUri) { setStatus('Select a video first.', true); return; }
     if (serverRunning) { setStatus('Already running.', true); return; }
     try {
       setStatus('Starting server...');
-      const result = await LocalStreamPlugin.startServer({ fileUri: selectedUri, port: 8080 });
+      const result = await LocalStream.startServer({ fileUri: selectedUri, port: 8080 });
       serverRunning = true;
       const url = `http://${result.ip}:${result.port}`;
       urlLink.href = url;
@@ -121,25 +122,25 @@
       new QRCode(qrContainer, { text: url, width: 200, height: 200, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.H });
       serverInfo.style.display = 'block';
       step2.style.display = 'none';
-      setStatus(`✅ Server running at ${url}`);
+      setStatus('✅ Server running at ' + url);
     } catch (err) {
       console.error(err);
-      setStatus('Error starting server: ' + err.message, true);
+      setStatus('Error starting server: ' + (err.message || JSON.stringify(err)), true);
     }
   });
 
   stopBtn.addEventListener('click', async () => {
-    if (!serverRunning) return;
+    if (!LocalStream || !serverRunning) return;
     try {
       setStatus('Stopping server...');
-      await LocalStreamPlugin.stopServer();
+      await LocalStream.stopServer();
       serverRunning = false;
       serverInfo.style.display = 'none';
       step2.style.display = 'block';
       setStatus('Server stopped.');
     } catch (err) {
       console.error(err);
-      setStatus('Error stopping server: ' + err.message, true);
+      setStatus('Error stopping: ' + (err.message || JSON.stringify(err)), true);
     }
   });
 </script>
