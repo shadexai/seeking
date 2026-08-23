@@ -1,9 +1,0 @@
-{
-  "name": "Seeking",
-  "short_name": "Seeking",
-  "start_url": "index.html",
-  "display": "standalone",
-  "background_color": "#12151B",
-  "theme_color": "#12151B",
-  "orientation": "portrait"
-}
